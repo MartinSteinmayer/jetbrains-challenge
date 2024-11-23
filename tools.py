@@ -140,7 +140,8 @@ def cleanCDocker(code: str, params: list) -> dict:
                 f"-fsanitize=address,undefined -static-libasan && "
                 f"./{executable_filename_asan} {' '.join(params)} && "
                 f"gcc {source_filename} -o {executable_filename_valgrind} && "
-                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'")
+                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'"
+            )
 
             container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
                                               command=command,
@@ -196,7 +197,10 @@ def lintCDocker(code: str) -> dict:
             temp_file.close()
 
             # Command to lint the code using clang-tidy
-            command = f"sh -c 'clang-tidy {source_filename} --'"
+            command = (
+                f"sh -c 'clang-tidy {source_filename} -- && "
+                f"cppcheck {source_filename}'"    
+            )
 
             container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool:latest",
                                               command=command,
