@@ -25,7 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 # Tools
-from tools import search, bing_search
+from tools import bing_search, runPythonDocker, cleanCDocker
 
 chat_history = []
 
@@ -59,9 +59,10 @@ def create_agent(tools: list, system_prompt: str):
 async def agent_node(state, agent, name):
 
     result = await agent.ainvoke(state)
-    print(result)
+    #print(f"\n\n {result.content} \n\n")
 
     if result.tool_calls:
+        print(result)
         pass
     else:
         result = AIMessage(content=result.content, name=name)
@@ -69,12 +70,7 @@ async def agent_node(state, agent, name):
     return {"messages": [result], "sender": name}
 
 
-# Define the tools for the agent to use
-
-
 async def main():
-
-    input_text = input("Enter the text: ")
 
     # Load environment variables
     load_dotenv()
@@ -116,7 +112,6 @@ async def main():
     async def supervisor_agent(state):
         supervisor_chain = supervisorPrompt | model.with_structured_output(routeResponse)
         response = await supervisor_chain.ainvoke(state)
-        print(response)
         return response
 
     ### Creating Agents -> Using functools.partial to set agent and name parameters ###
@@ -126,8 +121,12 @@ async def main():
     optimizer_prompt = "You are an optimizer agent. You are a general solution that should be used when the user wants to generate code, optimize an existing piece of code or wants an explanation for a piece of code."
     optimizer_agent = functools.partial(agent_node, agent=create_agent([], optimizer_prompt), name="Optimizer")
 
-    sanitizer_prompt = "You are a sanitizer agent. You are responsible for finding errors in the code. You will compile the code and run code sanitizers such as Valgrind."
-    sanitizer_agent = functools.partial(agent_node, agent=create_agent([], sanitizer_prompt), name="Sanitizer")
+    sanitizer_prompt = """You are a sanitizer agent. You are responsible for finding errors in the code. Do the following steps:
+    1 - You will compile the code and run the code based on which programming language it is. This is a dict based on language and tool name: {"c" : "cleanCDocker", "python" : "runPythonDocker"}.
+    2 - Make sure you provide to the user a simplified version of the output of the sanitizer tool."""
+    sanitizer_agent = functools.partial(agent_node,
+                                        agent=create_agent([cleanCDocker, runPythonDocker], sanitizer_prompt),
+                                        name="Sanitizer")
 
     helper_prompt = "You are a helper agent. You are responsible for answering questions about Jetbrains or general questions the user might ask that are unrelated to code. If you are asked a questions related to Jetbrains, always use the bing_search tool to find the answer."
     helper_agent = functools.partial(agent_node, agent=create_agent([bing_search], helper_prompt), name="Helper")
@@ -149,9 +148,9 @@ async def main():
     graph.add_conditional_edges("Supervisor", choose_agent, conditional_map)
 
     # Setup Tools
-    sanitizer_tools = ToolNode([search])
-    optimizer_tools = ToolNode([search])
-    linter_tools = ToolNode([search])
+    sanitizer_tools = ToolNode([cleanCDocker, runPythonDocker])
+    optimizer_tools = ToolNode([])
+    linter_tools = ToolNode([])
     helper_tools = ToolNode([bing_search])
 
     graph.add_node("SanitizerTools", sanitizer_tools)
@@ -182,12 +181,23 @@ async def main():
 
     workflow = graph.compile()
 
-    # Call the workflow
-    response = await workflow.ainvoke({"messages": [HumanMessage(content=input_text)]})
+    test_input = """ please sanitize the following code: 
+    #include <stdio.h>
 
+    int main() {
+        printf("Hello, World!\n");
+        return 0;
+    }
+    """
+
+    test_input = repr(test_input)
+
+    #input_text = input("Enter your message: ")
+    #message_history.append(HumanMessage(content=input_text))
+    response = await workflow.ainvoke({"messages": [HumanMessage(content=test_input)]})
+    message_history = response["messages"]
     response_text = response["messages"][-1].content
-    print(response_text)
-
+    print(f"Response: {response_text}")
     return response_text
 
 

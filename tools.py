@@ -13,15 +13,6 @@ import docker.utils
 from langchain_core.tools import tool
 
 
-@tool
-def search(query: str):
-    """Call to surf the web."""
-    # This is a placeholder, but don't tell the LLM that...
-    if "sf" in query.lower() or "san francisco" in query.lower():
-        return "It's 60 degrees and foggy."
-    return "It's 90 degrees and sunny."
-
-
 # Define the Bing Search Tool
 @tool
 def bing_search(query: str, count: int = 3) -> str:
@@ -70,7 +61,7 @@ def bing_search(query: str, count: int = 3) -> str:
 
 # Python error check
 @tool
-def runPythonDocker(code : str) -> dict:
+def runPythonDocker(code: str) -> dict:
     """
     Runs Python code insider a docker container and returns the output or errors.
 
@@ -81,19 +72,19 @@ def runPythonDocker(code : str) -> dict:
         dict: Contains "success" (bool), "output" (str) and "error" (str).
     """
 
+    print("\n\nPYTHON\n\n")
+
     # Initializer docker client
     client = docker.from_env()
 
     try:
         # Create a temporary container with the python image
-        container = client.containers.run(
-            image="tomassoares/jetbrains-cleaner-tool:latest",
-            command=f"python3 -c '{code}'",
-            detach=True,
-            stdin_open=True,
-            tty=True
-        )
-        
+        container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool:latest",
+                                          command=f"python3 -c '{code}'",
+                                          detach=True,
+                                          stdin_open=True,
+                                          tty=True)
+
         # Wait for the container to finish
         exit_status = container.wait()["StatusCode"]
         logs = container.logs().decode("utf-8")
@@ -112,7 +103,7 @@ def runPythonDocker(code : str) -> dict:
 
 # C sanitizer
 @tool
-def cleanCDocker(code : str, params: list) -> dict:
+def cleanCDocker(code: str, params: list) -> dict:
     """
     Compiles C code in docker container and runs valgrind leak sanitization to report potential leaks.
 
@@ -124,9 +115,10 @@ def cleanCDocker(code : str, params: list) -> dict:
         dict: Contains the success flag, sanitize (valgrind+fsaniitze) output, and any errors.
     """
 
-    client = docker.from_env()
+    print(f"code: {code}")
 
     try:
+        client = docker.from_env()
         # Create a unique filename for the C source code file and the executable
         source_filename = f"/tmp/{uuid.uuid4().hex}.c"
         executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
@@ -143,21 +135,23 @@ def cleanCDocker(code : str, params: list) -> dict:
                 f"-fsanitize=address,undefined -static-libasan && "
                 f"./{executable_filename_asan} {' '.join(params)} && "
                 f"gcc {source_filename} -o {executable_filename_valgrind} && "
-                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'"
-            )
+                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'")
 
-            container = client.containers.run(
-                image="tomassoares/jetbrains-cleaner-tool",
-                command=command,
-                volumes={temp_file.name: {'bind': f'{source_filename}', 'mode': 'ro'}},
-                detach=True,
-                tty=True,
-                stdin_open=True
-            )
+            container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
+                                              command=command,
+                                              volumes={temp_file.name: {
+                                                  'bind': f'{source_filename}',
+                                                  'mode': 'ro'
+                                              }},
+                                              detach=True,
+                                              tty=True,
+                                              stdin_open=True)
 
             # Wait for the code to finish and get the exit status code and logs
             exit_status = container.wait()["StatusCode"]
             logs = container.logs().decode("utf-8")
+            print(logs)
+            print(exit_status)
 
             # Cleanup container
             container.remove()
@@ -166,6 +160,7 @@ def cleanCDocker(code : str, params: list) -> dict:
                 return {"success": True, "output": logs, "error": None}
             else:
                 return {"success": False, "output": None, "error": logs}
-        
+
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
+
