@@ -9,47 +9,18 @@ import docker
 import uuid
 import tempfile
 import docker.utils
-from typing import Literal
+import re
+import html2text
 
+from typing import Literal
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 from utils import trim_md, clean_logs
 
 # Langchain
 from langchain_core.tools import tool
 
-
 # Define the Bing Search Tool
-@tool
-def bing_search(query: str, count: int = 3) -> str:
-    """
-    Perform a web search using Azure Bing Search API.
-
-    This function performs a web search using the Azure Bing Search API. 
-    It is designed to handle queries specifically related to JetBrains tools, 
-    such as PyCharm and IntelliJ.
-
-    Args:
-        query (str): The search query string.
-        count (int, optional): The number of search results to return. Defaults to 3.
-
-    Returns:
-        str: A formatted string of the top search results, including title, snippet, and URL.
-        If no results are found or an error occurs, an appropriate error message is returned.
-
-    Raises:
-        requests.RequestException: If the HTTP request fails or the Bing API endpoint is unreachable.
-    """
-    print("entered")
-    bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
-    bing_api_key = "636db1aa1d4c4169b1b365d0514940f4"  # Replace with your Bing API Key
-
-    headers = {"Ocp-Apim-Subscription-Key": bing_api_key}
-    params = {"q": query, "count": count}
-
-    try:
-        response = requests.get(bing_endpoint, headers=headers, params=params)
-        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
-    except requests.RequestException as e:
-        return f"Failed to perform web search: {str(e)}"
 
     # Parse the results
     results = response.json().get("webPages", {}).get("value", [])
@@ -310,3 +281,151 @@ def format_pylint_output(raw_logs: str) -> str:
             formatted_output.append(line)
 
     return "\n".join(formatted_output)
+
+@tool
+def bing_search(query: str, count: int = 3) -> str:
+    """
+    Perform a web search using Azure Bing Search API and extract meaningful content from the results.
+
+    Args:
+        query (str): The search query string.
+        count (int, optional): The number of search results to return. Defaults to 3.
+
+    Returns:
+        str: A formatted string of the top search results from specific domains, including titles and content in paragraphs.
+        If no results are found or an error occurs, an appropriate error message is returned.
+    """
+    bing_api_key = "636db1aa1d4c4169b1b365d0514940f4"  # Replace with your Bing API key
+    bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
+    headers = {"Ocp-Apim-Subscription-Key": bing_api_key}
+    params = {"q": query, "count": count}
+
+    # Allowed domains
+    allowed_domains = ["stackoverflow.com", "geeksforgeeks.org", "jetbrains.com"]
+
+    try:
+        # Perform the Bing search
+        response = requests.get(bing_endpoint, headers=headers, params=params)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        return f"Failed to perform web search: {str(e)}"
+
+    # Parse the Bing search results
+    results = response.json().get("webPages", {}).get("value", [])
+    if not results:
+        return "No results found."
+
+    # Process and extract content from each result
+    formatted_results = []
+    for result in results:
+        title = result.get("name", "No Title")
+        url = result.get("url", "No URL")
+
+        # Check if the result belongs to one of the allowed domains
+        domain = urlparse(url).netloc
+        if not any(allowed_domain in domain for allowed_domain in allowed_domains):
+            continue
+
+        # Extract content from the URL
+        try:
+            webpage_content = extract_webpage_content(url)
+            if webpage_content:  # Only include if content was successfully extracted
+                formatted_results.append(f"**{title}**\n\n{webpage_content}\n\n_________________________________________")
+        except Exception:
+            # Skip this result if extraction fails
+            continue
+
+    # If no results match the allowed domains, return a message
+    if not formatted_results:
+        return "No results found from the specified domains."
+
+    return "\n\n".join(formatted_results)
+
+
+def extract_webpage_content(url: str) -> str:
+    """
+    Extract meaningful content from a webpage using Beautiful Soup.
+
+    Args:
+        url (str): The URL of the webpage.
+
+    Returns:
+        str: Extracted content, specifically tailored for JetBrains, StackOverflow, GeeksforGeeks, and intellij-support.jetbrains.com.
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        )
+    }
+    try:
+        # Fetch the webpage
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise Exception(f"Failed to fetch the webpage: {str(e)}")
+
+    # Parse the webpage using Beautiful Soup
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    # Special handling for intellij-support.jetbrains.com
+    if "intellij-support.jetbrains.com" in url:
+        try:
+            title = soup.find("h1").get_text(strip=True)
+            content_area = soup.find("div", class_=re.compile(r"content|article", re.IGNORECASE))
+            paragraphs = content_area.find_all("p") if content_area else soup.find_all("p")
+            content_paragraphs = [p.get_text(" ", strip=True) for p in paragraphs]
+            return f"**{title}**\n\n" + "\n\n".join(content_paragraphs)
+        except Exception:
+            return None  # Return None if extraction fails
+
+    # Special handling for JetBrains
+    if "jetbrains.com" in url:
+        try:
+            title = soup.find("h1").get_text(strip=True)
+            content_area = soup.find("div", class_=re.compile(r"(main|content|doc-content)", re.IGNORECASE))
+            paragraphs = content_area.find_all("p") if content_area else soup.find_all("p")
+            content_paragraphs = [p.get_text(" ", strip=True) for p in paragraphs]
+            return f"**{title}**\n\n" + "\n\n".join(content_paragraphs)
+        except Exception:
+            return None
+
+    # Special handling for StackOverflow
+    if "stackoverflow.com" in url:
+        try:
+            question_title = soup.find("a", class_="question-hyperlink").get_text(strip=True)
+            question_body = soup.find("div", class_="s-prose js-post-body").get_text(" ", strip=True)
+            first_answer = soup.find_all("div", class_="s-prose js-post-body")[1].get_text(" ", strip=True)
+            return f"**Question:**\n{question_title}\n\n**Question Text:**\n{question_body}\n\n**First Answer:**\n{first_answer}"
+        except (AttributeError, IndexError):
+            return None
+
+    # Special handling for GeeksforGeeks
+    if "geeksforgeeks.org" in url:
+        try:
+            title = soup.find("h1").get_text(strip=True)
+            content_area = soup.find("div", class_=re.compile(r"content|article", re.IGNORECASE))
+            paragraphs = content_area.find_all("p") if content_area else soup.find_all("p")
+            content_paragraphs = [p.get_text(" ", strip=True) for p in paragraphs]
+            return f"**{title}**\n\n" + "\n\n".join(content_paragraphs)
+        except Exception:
+            return None
+
+    # General content extraction for non-specific domains
+    content_areas = soup.find_all(
+        ["main", "article", "div", "section"],
+        attrs={
+            "id": re.compile(r"content|main|article-body", re.IGNORECASE),
+            "class": re.compile(r"content|post|text|article-body", re.IGNORECASE),
+        },
+    )
+    if content_areas:
+        paragraphs = [area.get_text(" ", strip=True) for area in content_areas]
+        return "\n\n".join(paragraphs)
+    return None
+
+
+if __name__ == "__main__":
+    query = input("Enter your search query: ")
+    result = bing_search(query, count=3)
+    print(result)
