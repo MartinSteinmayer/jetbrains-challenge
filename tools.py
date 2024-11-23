@@ -9,6 +9,8 @@ import uuid
 import tempfile
 import docker.utils
 
+from utils import trimMd
+
 # Langchain
 from langchain_core.tools import tool
 
@@ -80,6 +82,9 @@ def runPythonDocker(code : str) -> dict:
     Returns:
         dict: Contains "success" (bool), "output" (str) and "error" (str).
     """
+    
+    # Remove the markdown delimiters from the given code string
+    code = trimMd(code)
 
     # Initializer docker client
     client = docker.from_env()
@@ -124,6 +129,9 @@ def cleanCDocker(code : str, params: list) -> dict:
         dict: Contains the success flag, sanitize (valgrind+fsaniitze) output, and any errors.
     """
 
+    # Remove the markdown delimiters from the given code string
+    code = trimMd(code)
+
     client = docker.from_env()
 
     try:
@@ -167,5 +175,58 @@ def cleanCDocker(code : str, params: list) -> dict:
             else:
                 return {"success": False, "output": None, "error": logs}
         
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}
+    
+
+# C linter
+@tool
+def lintCDocker(code : str) -> dict:
+    """
+    Lints C code in docker container with clang-tidy to enforce code style.
+
+    Args:
+        code (str): The C source code to lint.
+
+    Returns:
+        dict: Contains the success flag, linting output, and any errors.
+    """
+
+    # Remove the markdown delimiters from the given code string
+    code = trimMd(code)
+
+    client = docker.from_env()
+
+    try:
+        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
+
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file.close()
+
+            # Command to lint the code using clang-tidy
+            command = f"sh -c 'clang-tidy {source_filename} --'"
+
+            container = client.containers.run(
+                image = "tomassoares/jetbrains-cleaner-tool:latest",
+                command=command,
+                volumes={temp_file.name: {'bind': f'{source_filename}', 'mode': 'ro'}},
+                detach=True,
+                tty=True,
+                stdin_open=True
+            )
+
+            # Wair for linting to complete
+            exit_status = container.wait()["StatusCode"]
+            logs = container.logs().decode('utf-8')
+
+            # Cleanup container
+            container.remove()
+
+            if exit_status == 0:
+                return {"success": True, "output": logs, "error": None}
+            else:
+                return {"success": True, "output": None, "error": logs}
+            
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
