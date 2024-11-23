@@ -65,7 +65,7 @@ def bing_search(query: str, count: int = 3) -> str:
 
 # Python error check
 @tool
-def runPythonDocker(code: str) -> dict:
+def run_python_docker(code: str) -> dict:
     """
     Runs Python code insider a docker container and returns the output or errors.
 
@@ -111,7 +111,7 @@ def runPythonDocker(code: str) -> dict:
 
 # C sanitizer
 @tool
-def cleanCDocker(code: str, params: list) -> dict:
+def clean_c_docker(code: str, params: list) -> dict:
     """
     Compiles C code in docker container and runs valgrind leak sanitization to report potential leaks.
 
@@ -175,7 +175,7 @@ def cleanCDocker(code: str, params: list) -> dict:
 
 # C linter
 @tool
-def lintCDocker(code: str) -> dict:
+def lint_c_docker(code: str) -> dict:
     """
     Lints C code in docker container with clang-tidy to enforce code style.
 
@@ -233,7 +233,7 @@ def lintCDocker(code: str) -> dict:
 
 #Python linter
 @tool
-def lint_python_code_docker(code: str) -> dict:
+def lint_python_docker(code: str) -> dict:
 
     """
     Lint the provided Python code using pylint inside a Docker container.
