@@ -4,6 +4,10 @@ This file contains the tools that will be used in the LLM.
 
 # General imports
 import requests
+import docker
+import uuid
+import tempfile
+import docker.utils
 
 # Langchain
 from langchain_core.tools import tool
@@ -62,3 +66,106 @@ def bing_search(query: str, count: int = 3) -> str:
         [f"Title: {result['name']}\nSnippet: {result['snippet']}\nLink: {result['url']}" for result in results])
     print(formatted_results)
     return formatted_results
+
+
+# Python error check
+@tool
+def runPythonDocker(code : str) -> dict:
+    """
+    Runs Python code insider a docker container and returns the output or errors.
+
+    Args:
+        code (str) : Python code to execute.
+    
+    Returns:
+        dict: Contains "success" (bool), "output" (str) and "error" (str).
+    """
+
+    # Initializer docker client
+    client = docker.from_env()
+
+    try:
+        # Create a temporary container with the python image
+        container = client.containers.run(
+            image="tomassoares/jetbrains-cleaner-tool:latest",
+            command=f"python3 -c '{code}'",
+            detach=True,
+            stdin_open=True,
+            tty=True
+        )
+        
+        # Wait for the container to finish
+        exit_status = container.wait()["StatusCode"]
+        logs = container.logs().decode("utf-8")
+
+        # Clean up container
+        container.remove()
+
+        if exit_status == 0:
+            return {"success": True, "output": logs, "error": None}
+        else:
+            return {"success": False, "output": None, "error": logs}
+
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}
+
+
+# C sanitizer
+@tool
+def cleanCDocker(code : str, params: list) -> dict:
+    """
+    Compiles C code in docker container and runs valgrind leak sanitization to report potential leaks.
+
+    Args:
+        code (str): The C source code to compile and sanitize using leak sanitizer and valgrind.
+        params (list): A list of strings representing the parameters that are given to the c code to run.
+
+    Returns:
+        dict: Contains the success flag, sanitize (valgrind+fsaniitze) output, and any errors.
+    """
+
+    client = docker.from_env()
+
+    try:
+        # Create a unique filename for the C source code file and the executable
+        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
+        executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
+        executable_filename_valgrind = f"/tmp/{uuid.uuid4().hex}_valgrind"
+
+        # Create a temporary container with the C image
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file.close()
+
+            # Docker run command
+            command = (
+                f"sh -c 'gcc {source_filename} -o {executable_filename_asan} "
+                f"-fsanitize=address,undefined -static-libasan && "
+                f"./{executable_filename_asan} {' '.join(params)} && "
+                f"gcc {source_filename} -o {executable_filename_valgrind} && "
+                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'"
+            )
+
+            container = client.containers.run(
+                image="tomassoares/jetbrains-cleaner-tool",
+                command=command,
+                volumes={temp_file.name: {'bind': f'{source_filename}', 'mode': 'ro'}},
+                detach=True,
+                tty=True,
+                stdin_open=True
+            )
+
+            # Wait for the code to finish and get the exit status code and logs
+            exit_status = container.wait()["StatusCode"]
+            logs = container.logs().decode("utf-8")
+
+            # Cleanup container
+            container.remove()
+
+            if exit_status == 0:
+                return {"success": True, "output": logs, "error": None}
+            else:
+                return {"success": False, "output": None, "error": logs}
+        
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}

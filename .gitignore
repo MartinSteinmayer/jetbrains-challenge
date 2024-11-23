@@ -1,6 +1,11 @@
 # Ignore virtual environment
 venv/
+sanitizer-venv/
 __pycache__/
+Dockerfile
 *.pyc
 *.pyo
 .env
+
+test.c
+test.py
