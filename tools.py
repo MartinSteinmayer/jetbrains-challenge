@@ -8,6 +8,7 @@ import docker
 import uuid
 import tempfile
 import docker.utils
+from typing import Literal
 
 from utils import trimMd
 
@@ -226,3 +227,76 @@ def lintCDocker(code: str) -> dict:
 
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
+
+#Python linter
+
+@tool
+def lint_python_code_docker(code: str) -> dict:
+    client = docker.from_env()
+    container_image = "tomassoares/jetbrains-cleaner-tool:latest"
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8", suffix=".py") as temp_file:
+            temp_file.write(code)
+            temp_file.close()
+
+            container_code_path = f"/tmp/{uuid.uuid4().hex}.py"
+            command = f"pylint {container_code_path}"
+
+            container = client.containers.run(
+                image=container_image,
+                command=command,
+                volumes={temp_file.name: {"bind": container_code_path, "mode": "ro"}},
+                detach=True,
+                tty=True,
+                stdin_open=True,
+            )
+
+            exit_status = container.wait()["StatusCode"]
+            raw_logs = container.logs().decode("utf-8")
+
+            container.remove()
+            os.remove(temp_file.name)
+
+            # Parse pylint logs for human-readable output
+            human_readable_output = format_pylint_output(raw_logs)
+
+            # Set success based on exit code
+            success = exit_status in [0, 1]
+
+            return {
+                "success": success,
+                "output": human_readable_output if success else None,
+                "error": None if success else human_readable_output,
+            }
+
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}
+
+
+def format_pylint_output(raw_logs: str) -> str:
+    """
+    Converts raw pylint logs into a more human-readable format.
+    """
+    lines = raw_logs.strip().splitlines()
+    formatted_output = []
+
+    for line in lines:
+        if line.startswith("************* Module"):
+            formatted_output.append(f"\nModule: {line.split()[-1]}")
+        elif line.startswith("/") and ":" in line:
+            # Extract file, line, column, and error message
+            parts = line.split(":")
+            file_path = parts[0]
+            line_number = parts[1]
+            column_number = parts[2]
+            error_message = ":".join(parts[3:]).strip()
+            formatted_output.append(
+                f"File: {file_path}, Line: {line_number}, Column: {column_number}\n  -> {error_message}"
+            )
+        elif "Your code has been rated" in line:
+            formatted_output.append(f"\n{line}")
+        else:
+            formatted_output.append(line)
+
+    return "\n".join(formatted_output)
