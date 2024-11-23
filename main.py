@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 import operator
 import functools
 from dotenv import load_dotenv
+import requests
 
 # Langchain
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
@@ -76,6 +77,52 @@ def search(query: str):
     return "It's 90 degrees and sunny."
 
 
+# Define the Bing Search Tool
+@tool
+def bing_search(query: str, count: int = 3) -> str:
+    """
+    Perform a web search using Azure Bing Search API.
+
+    This function performs a web search using the Azure Bing Search API. 
+    It is designed to handle queries specifically related to JetBrains tools, 
+    such as PyCharm and IntelliJ.
+
+    Args:
+        query (str): The search query string.
+        count (int, optional): The number of search results to return. Defaults to 3.
+
+    Returns:
+        str: A formatted string of the top search results, including title, snippet, and URL.
+        If no results are found or an error occurs, an appropriate error message is returned.
+
+    Raises:
+        requests.RequestException: If the HTTP request fails or the Bing API endpoint is unreachable.
+    """
+    print("entered")
+    bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
+    bing_api_key = "636db1aa1d4c4169b1b365d0514940f4"  # Replace with your Bing API Key
+
+    headers = {"Ocp-Apim-Subscription-Key": bing_api_key}
+    params = {"q": query, "count": count}
+
+    try:
+        response = requests.get(bing_endpoint, headers=headers, params=params)
+        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+    except requests.RequestException as e:
+        return f"Failed to perform web search: {str(e)}"
+
+    # Parse the results
+    results = response.json().get("webPages", {}).get("value", [])
+    if not results:
+        return "No results found."
+
+    # Format and return the top results
+    formatted_results = "\n\n".join(
+        [f"Title: {result['name']}\nSnippet: {result['snippet']}\nLink: {result['url']}" for result in results])
+    print(formatted_results)
+    return formatted_results
+
+
 async def main():
 
     input_text = input("Enter the text: ")
@@ -133,8 +180,8 @@ async def main():
     sanitizer_prompt = "You are a sanitizer agent. You are responsible for finding errors in the code. You will compile the code and run code sanitizers such as Valgrind."
     sanitizer_agent = functools.partial(agent_node, agent=create_agent([], sanitizer_prompt), name="Sanitizer")
 
-    helper_prompt = "You are a helper agent. You are responsible for answering questions about Jetbrains or general questions the user might ask that are unrelated to code."
-    helper_agent = functools.partial(agent_node, agent=create_agent([], helper_prompt), name="Helper")
+    helper_prompt = "You are a helper agent. You are responsible for answering questions about Jetbrains or general questions the user might ask that are unrelated to code. If you are asked a questions related to Jetbrains, always use the bing_search tool to find the answer."
+    helper_agent = functools.partial(agent_node, agent=create_agent([bing_search], helper_prompt), name="Helper")
 
     ### Define the StateGraph ###
     graph = StateGraph(AgentState)
@@ -156,7 +203,7 @@ async def main():
     sanitizer_tools = ToolNode([search])
     optimizer_tools = ToolNode([search])
     linter_tools = ToolNode([search])
-    helper_tools = ToolNode([search])
+    helper_tools = ToolNode([bing_search])
 
     graph.add_node("SanitizerTools", sanitizer_tools)
     graph.add_node("OptimizerTools", optimizer_tools)
