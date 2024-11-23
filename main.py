@@ -115,8 +115,11 @@ async def main():
         return response
 
     ### Creating Agents -> Using functools.partial to set agent and name parameters ###
-    linter_prompt = "You are a linter agent. You are responsible for running linters in the background to find style errors."
-    linter_agent = functools.partial(agent_node, agent=create_agent([], linter_prompt), name="Linter")
+    linter_prompt = """You are a linter agent. You are responsible for running linters in the background to find style errors. Follow the steps below: 
+    1 - You will run the linter tool based on the programming language of the code. This is a dict based on language and tool name: {"c" : "lintCDocker"}.
+    2 - You will provide the user with a simplified version of the output of the linter tool.
+    """
+    linter_agent = functools.partial(agent_node, agent=create_agent([lintCDocker], linter_prompt), name="Linter")
 
     optimizer_prompt = "You are an optimizer agent. You are a general solution that should be used when the user wants to generate code, optimize an existing piece of code or wants an explanation for a piece of code."
     optimizer_agent = functools.partial(agent_node, agent=create_agent([], optimizer_prompt), name="Optimizer")
@@ -181,14 +184,41 @@ async def main():
 
     workflow = graph.compile()
 
-    message_history = []
-    while True:
-        input_text = input("Enter your message: ")
-        message_history.append(HumanMessage(content=input_text))
-        response = await workflow.ainvoke({"messages": message_history})
-        message_history = response["messages"]
-        response_text = response["messages"][-1].content
-        print(f"Response: {response_text}")
+    test_input = """
+please lint the following code:
+
+#include<stdio.h> // Missing space between includes
+
+void unused_function() { // Unused function
+    printf("This function is not used!\n");
+}
+
+int main(){
+
+    int x=10,y=20; // Missing spaces around operators
+    if(x>y) // Missing spaces around operator
+    {
+        printf("X is greater\n");
+    }else{
+        printf( "Y is greater or equal\n"); // Inconsistent spacing
+    }
+
+    for(int i=0;i<5;i++){ printf("%d\n",i); } // Single-line loop (not recommended)
+
+    return 0;
+}
+    """
+    response = await workflow.ainvoke({"messages": [HumanMessage(content=repr(test_input))]})
+    print(response["messages"][-1].content)
+
+    # message_history = []
+    # while True:
+    #     input_text = input("Enter your message: ")
+    #     message_history.append(HumanMessage(content=input_text))
+    #     response = await workflow.ainvoke({"messages": message_history})
+    #     message_history = response["messages"]
+    #     response_text = response["messages"][-1].content
+    #     print(f"Response: {response_text}")
 
 
 # Run main with asyncio

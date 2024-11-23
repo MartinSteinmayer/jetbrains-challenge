@@ -185,6 +185,7 @@ def lintCDocker(code: str) -> dict:
 
     # Remove the markdown delimiters from the given code string
     code = trimMd(code)
+    print(code)
 
     try:
         client = docker.from_env()
@@ -212,6 +213,9 @@ def lintCDocker(code: str) -> dict:
             exit_status = container.wait()["StatusCode"]
             logs = container.logs().decode('utf-8')
 
+            print(logs)
+            print("Exit status: ", exit_status)
+
             # Cleanup container
             container.remove()
 
@@ -221,4 +225,6 @@ def lintCDocker(code: str) -> dict:
                 return {"success": True, "output": None, "error": logs}
 
     except Exception as e:
+        print(str(e))
+        print("Error")
         return {"success": False, "output": None, "error": str(e)}
