@@ -25,7 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 # Tools
-from tools import bing_search, runPythonDocker, cleanCDocker
+from tools import bing_search, runPythonDocker, cleanCDocker, lintCDocker
 
 chat_history = []
 
@@ -150,7 +150,7 @@ async def main():
     # Setup Tools
     sanitizer_tools = ToolNode([cleanCDocker, runPythonDocker])
     optimizer_tools = ToolNode([])
-    linter_tools = ToolNode([])
+    linter_tools = ToolNode([lintCDocker])
     helper_tools = ToolNode([bing_search])
 
     graph.add_node("SanitizerTools", sanitizer_tools)
@@ -189,7 +189,6 @@ async def main():
         message_history = response["messages"]
         response_text = response["messages"][-1].content
         print(f"Response: {response_text}")
-        return response_text
 
 
 # Run main with asyncio

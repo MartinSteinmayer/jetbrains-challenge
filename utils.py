@@ -14,4 +14,3 @@ def trimMd(code: str) -> str:
             code = code[:-3]
 
     return code.strip()
-
