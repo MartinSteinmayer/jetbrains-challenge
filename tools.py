@@ -11,7 +11,7 @@ import tempfile
 import docker.utils
 from typing import Literal
 
-from utils import trim_md, clean_logs
+from utils import trim_md, clean_logs, format_pylint_output
 
 # Langchain
 from langchain_core.tools import tool
@@ -113,7 +113,7 @@ def run_python_docker(code: str) -> dict:
 @tool
 def clean_c_docker(code: str, params: list) -> dict:
     """
-    Compiles C code in docker container and runs valgrind leak sanitization to report potential leaks.
+    Compiles C code in docker container and runs valgrind + fsanitize to report potential leaks.
 
     Args:
         code (str): The C source code to compile and sanitize using leak sanitizer and valgrind.
@@ -231,7 +231,7 @@ def lint_c_docker(code: str) -> dict:
         return {"success": False, "output": None, "error": str(e)}
 
 
-#Python linter
+# Python linter
 @tool
 def lint_python_docker(code: str) -> dict:
 
@@ -284,29 +284,64 @@ def lint_python_docker(code: str) -> dict:
         return {"success": False, "output": None, "error": str(e)}
 
 
-def format_pylint_output(raw_logs: str) -> str:
-    """
-    Converts raw pylint logs into a more human-readable format.
-    """
-    lines = raw_logs.strip().splitlines()
-    formatted_output = []
+    # C++ sanitizer
+    @tool
+    def clean_cpp_docker(code: str, params: list) -> dict:
+        """
+        Compiles C++ code in docker container and runs valgrind + fsanitize to report potential leaks.
 
-    for line in lines:
-        if line.startswith("************* Module"):
-            formatted_output.append(f"\nModule: {line.split()[-1]}")
-        elif line.startswith("/") and ":" in line:
-            # Extract file, line, column, and error message
-            parts = line.split(":")
-            file_path = parts[0]
-            line_number = parts[1]
-            column_number = parts[2]
-            error_message = ":".join(parts[3:]).strip()
-            formatted_output.append(
-                f"File: {file_path}, Line: {line_number}, Column: {column_number}\n  -> {error_message}"
-            )
-        elif "Your code has been rated" in line:
-            formatted_output.append(f"\n{line}")
-        else:
-            formatted_output.append(line)
+        Args:
+            code (str): The C++ source code to compile and sanitize using leak sanitizer and valgrind.
+            params (list): A list of strings representing the parameters that are given to the C++ code to run.
 
-    return "\n".join(formatted_output)
+        Returns:
+            dict: Contains the success flag, sanitize (valgrind+fsaniitze) output, and any errors.
+        """
+        # Remove the markdown delimiters from the given code string
+        code = trim_md(code)
+        try:
+            client = docker.from_env()
+            # Create a unique filename for the C source code file and the executable
+            source_filename = f"/tmp/{uuid.uuid4().hex}.c"
+            executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
+            executable_filename_valgrind = f"/tmp/{uuid.uuid4().hex}_valgrind"
+
+            # Create a temporary container with the C image
+            with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+                temp_file.write(code)
+                temp_file.close()
+
+                # Docker run command
+                command = (
+                    f"sh -c 'g++ {source_filename} -o {executable_filename_asan} "
+                    f"-fsanitize=address,undefined -static-libasan && "
+                    f"./{executable_filename_asan} {' '.join(params)} && "
+                    f"g++ {source_filename} -o {executable_filename_valgrind} && "
+                    f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'"
+                )
+
+                container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
+                                                command=command,
+                                                volumes={temp_file.name: {
+                                                    'bind': f'{source_filename}',
+                                                    'mode': 'ro'
+                                                }},
+                                                detach=True,
+                                                tty=True,
+                                                stdin_open=True)
+
+                # Wait for the code to finish and get the exit status code and logs
+                exit_status = container.wait()["StatusCode"]
+                raw_logs = container.logs().decode("utf-8")
+                logs = clean_logs(raw_logs)
+
+                # Cleanup container
+                container.remove()
+
+                if exit_status == 0:
+                    return {"success": True, "output": logs, "error": None}
+                else:
+                    return {"success": False, "output": None, "error": logs}
+
+        except Exception as e:
+            return {"success": False, "output": None, "error": str(e)}

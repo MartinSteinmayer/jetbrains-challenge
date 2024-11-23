@@ -62,7 +62,7 @@ async def agent_node(state, agent, name):
     #print(f"\n\n {result.content} \n\n")
 
     if result.tool_calls:
-        print(result)
+        # print(result)
         pass
     else:
         result = AIMessage(content=result.content, name=name)
@@ -100,7 +100,7 @@ async def main():
         ("system", """ Given the conversation above, who should act next? Keep the following in mind: /
                 The sanitizer is supposed to find errors in the code. It will compile the code and run code sanitizers such as Valgrind.
                 The optimizer is a general solution that should be used when the user wants to generate code, optimize an existing piece of code or wants an explanation for a piece of code.
-                The linter is going to run linters in the background to find style errors. 
+                The linter is going to run linters in the background to clean up the code, while additionally checking for style issues. 
                 The helper is supposed to answer questions about Jetbrains or general questions the user might ask that are unrelated to code.
                 Select one of: {workers}
                 """)
@@ -115,7 +115,7 @@ async def main():
     ### Creating Agents -> Using functools.partial to set agent and name parameters ###
     linter_prompt = """You are a linter agent. You are responsible for running linters in the background to find style errors. Follow the steps below: 
     1 - You will run the linter tool based on the programming language of the code. This is a dict based on language and tool name: {"c" : "lint_c_docker"}.
-    2 - You will provide the user with a simplified version of the output of the linter tool.
+    2 - You will provide the user with a simplified version of the output of the linter tool point out potential style issues.
     """
 
     linter_agent = functools.partial(agent_node,
@@ -188,23 +188,23 @@ async def main():
     test_input = """
 please lint the following code:
 
-#include<stdio.h> // Missing space between includes
+#include<stdio.h>
 
-void unused_function() { // Unused function
+void unused_function() {
     printf("This function is not used!\n");
 }
 
 int main(){
 
-    int x=10,y=20; // Missing spaces around operators
-    if(x>y) // Missing spaces around operator
+    int x=10,y=20;
+    if(x>y) 
     {
         printf("X is greater\n");
     }else{
-        printf( "Y is greater or equal\n"); // Inconsistent spacing
+        printf( "Y is greater or equal\n");
     }
 
-    for(int i=0;i<5;i++){ printf("%d\n",i); } // Single-line loop (not recommended)
+    for(int i=0;i<5;i++){ printf("%d\n",i); } 
 
     return 0;
 }
