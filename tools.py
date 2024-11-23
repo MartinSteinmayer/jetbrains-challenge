@@ -232,6 +232,18 @@ def lintCDocker(code: str) -> dict:
 
 @tool
 def lint_python_code_docker(code: str) -> dict:
+
+        """
+    Lint the provided Python code using pylint inside a Docker container.
+
+    Args:
+        code: A string containing the Python code to be linted.
+
+    Returns:
+        dict: Contains "success" (bool), "output" (str), and "error" (str).
+        
+    """
+
     client = docker.from_env()
     container_image = "tomassoares/jetbrains-cleaner-tool:latest"
 
