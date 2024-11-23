@@ -3,6 +3,7 @@ This file contains the tools that will be used in the LLM.
 """
 
 # General imports
+import os
 import requests
 import docker
 import uuid
@@ -93,8 +94,8 @@ def runPythonDocker(code: str) -> dict:
 
         # Wait for the container to finish
         exit_status = container.wait()["StatusCode"]
-        logs = container.logs().decode("utf-8")
-        logs = clean_logs(logs)
+        raw_logs = container.logs().decode("utf-8")
+        logs = clean_logs(raw_logs)
 
         # Clean up container
         container.remove()
@@ -157,8 +158,8 @@ def cleanCDocker(code: str, params: list) -> dict:
 
             # Wait for the code to finish and get the exit status code and logs
             exit_status = container.wait()["StatusCode"]
-            logs = container.logs().decode("utf-8")
-            logs = clean_logs(logs)
+            raw_logs = container.logs().decode("utf-8")
+            logs = clean_logs(raw_logs)
 
             # Cleanup container
             container.remove()
@@ -215,8 +216,8 @@ def lintCDocker(code: str) -> dict:
 
             # Wair for linting to complete
             exit_status = container.wait()["StatusCode"]
-            logs = container.logs().decode('utf-8')
-            logs = clean_logs(logs)
+            raw_logs = container.logs().decode('utf-8')
+            logs = clean_logs(raw_logs)
 
             # Cleanup container
             container.remove()
@@ -229,12 +230,12 @@ def lintCDocker(code: str) -> dict:
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
 
-#Python linter
 
+#Python linter
 @tool
 def lint_python_code_docker(code: str) -> dict:
 
-        """
+    """
     Lint the provided Python code using pylint inside a Docker container.
 
     Args:
@@ -269,19 +270,15 @@ def lint_python_code_docker(code: str) -> dict:
             raw_logs = container.logs().decode("utf-8")
 
             container.remove()
-            os.remove(temp_file.name)
 
             # Parse pylint logs for human-readable output
             human_readable_output = format_pylint_output(raw_logs)
 
             # Set success based on exit code
-            success = exit_status in [0, 1]
-
-            return {
-                "success": success,
-                "output": human_readable_output if success else None,
-                "error": None if success else human_readable_output,
-            }
+            if exit_status == 0:
+                return {"success" : True, "output": human_readable_output, "error": None}
+            else:
+                return {"success" : False, "output": None, "error": human_readable_output}
 
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
