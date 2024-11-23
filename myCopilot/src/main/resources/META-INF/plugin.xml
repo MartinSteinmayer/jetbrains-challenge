@@ -25,6 +25,12 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
+        <action id="org.mycopilot.myCopilot.RunChatbotAction"
+                class="org.mycopilot.myCopilot.RunChatbotAction"
+                text="Run Chatbot"
+                description="Run the chatbot backend to interact with users.">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
 
     </extensions>
 </idea-plugin>

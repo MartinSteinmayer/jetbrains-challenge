@@ -25,7 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 # Tools
-from tools import bing_search, runPythonDocker, cleanCDocker, lintCDocker, lint_python_code_docker
+from tools import bing_search, run_python_docker, clean_c_docker, lint_c_docker, lint_python_docker
 
 chat_history = []
 
@@ -75,8 +75,6 @@ async def main():
     # Load environment variables
     load_dotenv()
 
-    print(os.getenv("OPENAI_API_KEY"))
-
     # Define the model for the supervisor
     model = ChatOpenAI(model="gpt-4o",
                        api_key=os.getenv("OPENAI_API_KEY"),
@@ -116,21 +114,22 @@ async def main():
 
     ### Creating Agents -> Using functools.partial to set agent and name parameters ###
     linter_prompt = """You are a linter agent. You are responsible for running linters in the background to find style errors. Follow the steps below: 
-    1 - You will run the linter tool based on the programming language of the code. This is a dict based on language and tool name: {"c" : "lintCDocker"}.
+    1 - You will run the linter tool based on the programming language of the code. This is a dict based on language and tool name: {"c" : "lint_c_docker"}.
     2 - You will provide the user with a simplified version of the output of the linter tool.
     """
+
     linter_agent = functools.partial(agent_node,
-                                     agent=create_agent([lintCDocker, lint_python_code_docker], linter_prompt),
+                                     agent=create_agent([lint_c_docker, lint_python_docker], linter_prompt),
                                      name="Linter")
 
     optimizer_prompt = "You are an optimizer agent. You are a general solution that should be used when the user wants to generate code, optimize an existing piece of code or wants an explanation for a piece of code."
     optimizer_agent = functools.partial(agent_node, agent=create_agent([], optimizer_prompt), name="Optimizer")
 
     sanitizer_prompt = """You are a sanitizer agent. You are responsible for finding errors in the code. Do the following steps:
-    1 - You will compile the code and run the code based on which programming language it is. This is a dict based on language and tool name: {"c" : "cleanCDocker", "python" : "runPythonDocker"}.
+    1 - You will compile the code and run the code based on which programming language it is. This is a dict based on language and tool name: {"c" : "clean_c_docker", "python" : "run_python_docker"}.
     2 - Make sure you provide to the user a simplified version of the output of the sanitizer tool."""
     sanitizer_agent = functools.partial(agent_node,
-                                        agent=create_agent([cleanCDocker, runPythonDocker], sanitizer_prompt),
+                                        agent=create_agent([clean_c_docker, run_python_docker], sanitizer_prompt),
                                         name="Sanitizer")
 
     helper_prompt = "You are a helper agent. You are responsible for answering questions about Jetbrains or general questions the user might ask that are unrelated to code. If you are asked a questions related to Jetbrains, always use the bing_search tool to find the answer."
@@ -153,9 +152,9 @@ async def main():
     graph.add_conditional_edges("Supervisor", choose_agent, conditional_map)
 
     # Setup Tools
-    sanitizer_tools = ToolNode([cleanCDocker, runPythonDocker])
+    sanitizer_tools = ToolNode([clean_c_docker, run_python_docker])
     optimizer_tools = ToolNode([])
-    linter_tools = ToolNode([lintCDocker, lint_python_code_docker])
+    linter_tools = ToolNode([lint_c_docker, lint_python_docker])
     helper_tools = ToolNode([bing_search])
 
     graph.add_node("SanitizerTools", sanitizer_tools)
