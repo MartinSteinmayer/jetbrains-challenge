@@ -221,6 +221,4 @@ def lintCDocker(code: str) -> dict:
                 return {"success": True, "output": None, "error": logs}
 
     except Exception as e:
-        print(str(e))
-        print("Error")
         return {"success": False, "output": None, "error": str(e)}
