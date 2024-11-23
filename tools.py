@@ -182,7 +182,7 @@ def clean_c_docker(code: str, params: list) -> dict:
 @tool
 def lint_c_docker(code: str) -> dict:
     """
-    Lints C code in docker container with clang-tidy to enforce code style.
+    Lints C code in docker container with clang-tidy, clang-format and cppcheck to enforce code style.
 
     Args:
         code (str): The C source code to lint.
@@ -206,6 +206,7 @@ def lint_c_docker(code: str) -> dict:
             # Command to lint the code using clang-tidy
             command = (
                 f"sh -c 'clang-tidy {source_filename} -- && "
+                f"clang-format -i {source_filename} && "
                 f"cppcheck {source_filename}'"    
             )
 
@@ -303,7 +304,7 @@ def clean_cpp_docker(code: str, params: list) -> dict:
 @tool
 def lint_cpp_docker(code: str) -> dict:
     """
-    Lints C++ code in docker container with clang-tidy to enforce code style.
+    Lints C++ code in docker container with clang-tidy, clang-format and cppcheck to enforce code style.
 
     Args:
         code (str): The C++ source code to lint.
@@ -327,6 +328,7 @@ def lint_cpp_docker(code: str) -> dict:
             # Command to lint the code using clang-tidy
             command = (
                 f"sh -c 'clang-tidy {source_filename} -- && "
+                f"clang-format -i {source_filename} && "
                 f"cppcheck {source_filename}'"    
             )
 
