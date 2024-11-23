@@ -299,6 +299,8 @@ def clean_cpp_docker(code: str, params: list) -> dict:
         return {"success": False, "output": None, "error": str(e)}
 
 
+# C++ linter
+@tool
 def lint_cpp_docker(code: str) -> dict:
     """
     Lints C++ code in docker container with clang-tidy to enforce code style.
