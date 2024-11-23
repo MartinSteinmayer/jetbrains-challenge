@@ -9,7 +9,7 @@ import uuid
 import tempfile
 import docker.utils
 
-from utils import trimMd
+from utils import trim_md, clean_logs
 
 # Langchain
 from langchain_core.tools import tool
@@ -75,7 +75,7 @@ def runPythonDocker(code: str) -> dict:
     """
 
     # Remove the markdown delimiters from the given code string
-    code = trimMd(code)
+    code = trim_md(code)
 
     print("\n\nPYTHON\n\n")
 
@@ -93,6 +93,7 @@ def runPythonDocker(code: str) -> dict:
         # Wait for the container to finish
         exit_status = container.wait()["StatusCode"]
         logs = container.logs().decode("utf-8")
+        logs = clean_logs(logs)
 
         # Clean up container
         container.remove()
@@ -121,7 +122,7 @@ def cleanCDocker(code: str, params: list) -> dict:
     """
 
     # Remove the markdown delimiters from the given code string
-    code = trimMd(code)
+    code = trim_md(code)
     try:
         client = docker.from_env()
         # Create a unique filename for the C source code file and the executable
@@ -156,8 +157,7 @@ def cleanCDocker(code: str, params: list) -> dict:
             # Wait for the code to finish and get the exit status code and logs
             exit_status = container.wait()["StatusCode"]
             logs = container.logs().decode("utf-8")
-            print(logs)
-            print(exit_status)
+            logs = clean_logs(logs)
 
             # Cleanup container
             container.remove()
@@ -185,7 +185,7 @@ def lintCDocker(code: str) -> dict:
     """
 
     # Remove the markdown delimiters from the given code string
-    code = trimMd(code)
+    code = trim_md(code)
 
     try:
         client = docker.from_env()
@@ -215,6 +215,7 @@ def lintCDocker(code: str) -> dict:
             # Wair for linting to complete
             exit_status = container.wait()["StatusCode"]
             logs = container.logs().decode('utf-8')
+            logs = clean_logs(logs)
 
             # Cleanup container
             container.remove()
