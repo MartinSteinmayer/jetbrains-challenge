@@ -181,24 +181,15 @@ async def main():
 
     workflow = graph.compile()
 
-    test_input = """ please sanitize the following code: 
-    #include <stdio.h>
-
-    int main() {
-        printf("Hello, World!\n");
-        return 0;
-    }
-    """
-
-    test_input = repr(test_input)
-
-    #input_text = input("Enter your message: ")
-    #message_history.append(HumanMessage(content=input_text))
-    response = await workflow.ainvoke({"messages": [HumanMessage(content=test_input)]})
-    message_history = response["messages"]
-    response_text = response["messages"][-1].content
-    print(f"Response: {response_text}")
-    return response_text
+    message_history = []
+    while True:
+        input_text = input("Enter your message: ")
+        message_history.append(HumanMessage(content=input_text))
+        response = await workflow.ainvoke({"messages": message_history})
+        message_history = response["messages"]
+        response_text = response["messages"][-1].content
+        print(f"Response: {response_text}")
+        return response_text
 
 
 # Run main with asyncio
