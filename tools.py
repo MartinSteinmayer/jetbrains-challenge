@@ -69,7 +69,7 @@ def lint_python_docker(code: str) -> dict:
     Lint the provided Python code using pylint inside a Docker container.
 
     Args:
-        code: A string containing the Python code to be linted.
+        code (str): A string containing the Python code to be linted.
 
     Returns:
         dict: Contains "success" (bool), "output" (str), and "error" (str).
@@ -299,7 +299,7 @@ def clean_cpp_docker(code: str, params: list) -> dict:
         return {"success": False, "output": None, "error": str(e)}
 
 
-def lint_cpp_docker(code: str, params: list) -> dict:
+def lint_cpp_docker(code: str) -> dict:
     """
     Lints C++ code in docker container with clang-tidy to enforce code style.
 
