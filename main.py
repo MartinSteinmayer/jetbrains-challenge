@@ -25,7 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 # Tools
-from tools import bing_search, run_python_docker, clean_c_docker, lint_c_docker, lint_python_docker
+from tools import bing_search, run_python_docker, lint_python_docker, clean_c_docker, lint_c_docker, clean_cpp_docker, lint_cpp_docker
 
 chat_history = []
 
@@ -119,7 +119,7 @@ async def main():
     """
 
     linter_agent = functools.partial(agent_node,
-                                     agent=create_agent([lint_c_docker, lint_python_docker], linter_prompt),
+                                     agent=create_agent([lint_c_docker, lint_cpp_docker, lint_python_docker], linter_prompt),
                                      name="Linter")
 
     optimizer_prompt = "You are an optimizer agent. You are a general solution that should be used when the user wants to generate code, optimize an existing piece of code or wants an explanation for a piece of code."
