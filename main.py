@@ -120,6 +120,7 @@ async def main(input_text):
     linter_prompt = """You are a linter agent. You are responsible for running linters in the background to find style errors. Follow the steps below: 
     1 - You will run the linter tool based on the programming language of the code. This is a dict based on language and tool name: {"c" : "lint_c_docker", "c++" : "lint_cpp_docker", "python" : "lint_python_docker"}.
     2 - You will provide the user with a simplified version of the output of the linter tool point out potential style issues.
+    3 - You must ignore errors related to imports/packages, don't even mention them.
     """
 
     linter_agent = functools.partial(agent_node,
