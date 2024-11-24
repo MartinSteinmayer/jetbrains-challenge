@@ -4,13 +4,16 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.fileEditor.FileEditorManager
 import java.awt.BorderLayout
 import java.awt.Dimension
 import javax.swing.*
 import java.io.*
 
 
-class PopUpChat : AnAction() {
+
+class Codi : AnAction() {
 
     fun loadEnv(filePath: String): Map<String, String> {
         val envMap = mutableMapOf<String, String>()
@@ -23,51 +26,102 @@ class PopUpChat : AnAction() {
         return envMap
     }
 
+    private fun getCurrentFileContent(project: Project?): String? {
+        if (project == null) return null
+
+        // Get the currently selected file in the editor
+        val editorManager = FileEditorManager.getInstance(project)
+        val selectedFile: VirtualFile? = editorManager.selectedFiles.firstOrNull()
+
+        // Read the content of the selected file
+        if (selectedFile != null && selectedFile.isValid) {
+            try {
+                return String(selectedFile.contentsToByteArray(), Charsets.UTF_8)
+            } catch (e: IOException) {
+                e.printStackTrace()
+                return "Error reading file content: ${e.message}"
+            }
+        }
+        return null
+    }
+
     override fun actionPerformed(event: AnActionEvent) {
         val project: Project? = event.project
-        val title = "Chat with Copilot"
+        val title = "CODI"
 
-        // Create a chat window
+        val fileContent = getCurrentFileContent(project)
+
         val chatFrame = JFrame(title)
         chatFrame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
         chatFrame.layout = BorderLayout()
         chatFrame.setSize(500, 400)
         chatFrame.minimumSize = Dimension(400, 300)
 
-        // Chat history panel
         val chatArea = JTextArea()
         chatArea.isEditable = false
         val scrollPane = JScrollPane(chatArea)
         chatFrame.add(scrollPane, BorderLayout.CENTER)
 
-        // User input panel
         val inputPanel = JPanel(BorderLayout())
         val userInputField = JTextField()
         val sendButton = JButton("Send")
+        val sendWithContextButton = JButton("Send with Context") // New button
+        val buttonPanel = JPanel(BorderLayout())
+
+        buttonPanel.add(sendButton, BorderLayout.WEST)
+        buttonPanel.add(sendWithContextButton, BorderLayout.EAST)
+
         inputPanel.add(userInputField, BorderLayout.CENTER)
-        inputPanel.add(sendButton, BorderLayout.EAST)
+        inputPanel.add(buttonPanel, BorderLayout.SOUTH)
         chatFrame.add(inputPanel, BorderLayout.SOUTH)
 
         chatFrame.isVisible = true
-        
 
         val messageList = mutableListOf<String>()
-        // Add action listener for the send button
+
         sendButton.addActionListener {
             val userInput = userInputField.text.trim()
             if (userInput.isNotEmpty()) {
                 chatArea.append("You: $userInput\n")
                 userInputField.text = ""
-
-                // Create message list 
                 messageList.add("You: $userInput\n")
-
-
-                // Process user input in the background
                 processChatInput(messageList, chatArea)
             }
         }
+
+        sendWithContextButton.addActionListener {
+            val userInput = userInputField.text.trim()
+            if (userInput.isNotEmpty() && fileContent != null) {
+                println(fileContent)
+                val parsedFileContent = repr(fileContent)
+                val combinedInput = "Context:$parsedFileContent User Input: $userInput"
+                println(combinedInput)
+                chatArea.append("You (with context): $userInput\n")
+                userInputField.text = ""
+                messageList.add("You (with context): $combinedInput\n")
+                processChatInput(messageList, chatArea)
+            } else if (fileContent == null) {
+                chatArea.append("No file context available.\n")
+            }
+        }
     }
+
+    fun repr(input: String): String {
+        val escaped = StringBuilder()
+        for (char in input) {
+            when (char) {
+                '\n' -> escaped.append("\\n")
+                '\t' -> escaped.append("\\t")
+                '\r' -> escaped.append("\\r")
+                '\\' -> escaped.append("\\\\")
+                '"' -> escaped.append("\\\"")
+                '\'' -> escaped.append("\\\'")
+                else -> escaped.append(char)
+            }
+        }
+        return "\"$escaped\""
+    }
+
 
     private fun processChatInput(messageList: MutableList<String>, chatArea: JTextArea) {
 
@@ -119,6 +173,7 @@ class PopUpChat : AnAction() {
                     val response = get()
                     chatArea.append("Copilot: $response\n")
                     messageList.add("Copilot: $response\n")
+                    println(response)
                 } catch (ex: Exception) {
                     chatArea.append("Error communicating with chatbot: ${ex.message}\n")
                     messageList.add("Copilot: Error communicating with chatbot: ${ex.message}\n")

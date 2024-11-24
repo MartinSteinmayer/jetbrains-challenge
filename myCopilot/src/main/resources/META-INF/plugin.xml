@@ -73,7 +73,7 @@
             <add-to-group group-id="ToolsMenu" anchor="after" relative-to-action="org.intellij.sdk.action.GroupedActions"/>
         </group>
         -->
-        <action id="org.mycopilot.mycopilot.PopUpChat" class="org.mycopilot.mycopilot.PopUpChat" text="PopUpChat"
+        <action id="org.mycopilot.mycopilot.Codi" class="org.mycopilot.mycopilot.Codi" text="Codi"
                 description="Chat pops up">
             <add-to-group group-id="ToolsMenu" anchor="first"/>
         </action>

@@ -79,8 +79,10 @@ def parse_chat_history(file_path: str) -> List:
     with open(file_path, "r") as file:
         for line in file:
             line = line.strip()
-            if line.startswith("You:") or line.startswith("You (with context):"):
+            if line.startswith("You:"):
                 messages.append(HumanMessage(content=repr(line[4:].strip())))
+            elif line.startswith("You (with context):"):
+                messages.append(HumanMessage(content=repr(line[19:].strip())))
             elif line.startswith("Copilot:"):
                 messages.append(AIMessage(content=repr(line[8:].strip())))
     return messages
@@ -89,8 +91,6 @@ def parse_chat_history(file_path: str) -> List:
 async def main(file_path: str):
 
     message_list = parse_chat_history(file_path)
-
-    print(f"Messages: {message_list}")
 
     # Specify the absolute path to your .env file
     env_path = "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/.env"
