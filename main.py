@@ -4,6 +4,7 @@ Main implementation of the multi-agent copilot.
 
 # General imports
 from typing import Annotated, Literal, TypedDict, Sequence, Callable
+from argparse import ArgumentParser
 import asyncio
 import os
 from langchain_core import messages
@@ -62,7 +63,7 @@ async def agent_node(state, agent, name):
     #print(f"\n\n {result.content} \n\n")
 
     if result.tool_calls:
-        print(result)
+        # print(result)
         pass
     else:
         result = AIMessage(content=result.content, name=name)
@@ -70,10 +71,13 @@ async def agent_node(state, agent, name):
     return {"messages": [result], "sender": name}
 
 
-async def main():
+async def main(input_text):
 
-    # Load environment variables
-    load_dotenv()
+    # Specify the absolute path to your .env file
+    env_path = "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/.env"
+
+    # Load the .env file
+    load_dotenv(dotenv_path=env_path)
 
     # Define the model for the supervisor
     model = ChatOpenAI(model="gpt-4o",
@@ -185,33 +189,32 @@ async def main():
 
     workflow = graph.compile()
 
-    test_input = """
-please lint the following code:
+    #     test_input = """
+    # please lint the following code:
+    #
+    # #include<stdio.h> // Missing space between includes
+    #
+    # void unused_function() { // Unused function
+    #     printf("This function is not used!\n");
+    # }
+    #
+    # int main(){
+    #
+    #     int x=10,y=20; // Missing spaces around operators
+    #     if(x>y) // Missing spaces around operator
+    #     {
+    #         printf("X is greater\n");
+    #     }else{
+    #         printf( "Y is greater or equal\n"); // Inconsistent spacing
+    #     }
+    #
+    #     for(int i=0;i<5;i++){ printf("%d\n",i); } // Single-line loop (not recommended)
+    #
+    #     return 0;
+    # }
+    #     """
 
-#include<stdio.h> // Missing space between includes
-
-void unused_function() { // Unused function
-    printf("This function is not used!\n");
-}
-
-int main(){
-
-    int x=10,y=20; // Missing spaces around operators
-    if(x>y) // Missing spaces around operator
-    {
-        printf("X is greater\n");
-    }else{
-        printf( "Y is greater or equal\n"); // Inconsistent spacing
-    }
-
-    for(int i=0;i<5;i++){ printf("%d\n",i); } // Single-line loop (not recommended)
-
-    return 0;
-}
-    """
-
-    response = await workflow.ainvoke({"messages": [HumanMessage(content=repr(test_input))]})
-    print(response["messages"][-1].content)
+    response = await workflow.ainvoke({"messages": [HumanMessage(content=repr(input_text))]})
 
     # message_history = []
     # while True:
@@ -221,8 +224,19 @@ int main(){
     #     message_history = response["messages"]
     #     response_text = response["messages"][-1].content
     #     print(f"Response: {response_text}")
+    print(response["messages"][-1].content)
+    return response["messages"][-1].content
 
 
 # Run main with asyncio
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = ArgumentParser(description="Run the chatbot with an initial input")
+    parser.add_argument("input_text", nargs="?", default=None, help="Initial input text for the chatbot")
+    args = parser.parse_args()
+
+    if args.input_text:
+        print(f"Received input: {args.input_text}")
+    else:
+        print("No input text provided.")
+
+    asyncio.run(main(args.input_text))
