@@ -3,7 +3,7 @@ Main implementation of the multi-agent copilot.
 """
 
 # General imports
-from typing import Annotated, Literal, TypedDict, Sequence, Callable
+from typing import Annotated, Literal, TypedDict, Sequence, Callable, List
 from argparse import ArgumentParser
 import asyncio
 import os
@@ -71,7 +71,26 @@ async def agent_node(state, agent, name):
     return {"messages": [result], "sender": name}
 
 
-async def main(input_text):
+def parse_chat_history(file_path: str) -> List:
+    """
+    Parse chat history from the given file and separate messages into HumanMessage and AIMessage.
+    """
+    messages = []
+    with open(file_path, "r") as file:
+        for line in file:
+            line = line.strip()
+            if line.startswith("You:"):
+                messages.append(HumanMessage(content=repr(line[4:].strip())))
+            elif line.startswith("You (with context):"):
+                messages.append(HumanMessage(content=repr(line[19:].strip())))
+            elif line.startswith("Copilot:"):
+                messages.append(AIMessage(content=repr(line[8:].strip())))
+    return messages
+
+
+async def main(file_path: str):
+
+    message_list = parse_chat_history(file_path)
 
     # Specify the absolute path to your .env file
     env_path = "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/.env"
@@ -192,7 +211,7 @@ async def main(input_text):
 
     workflow = graph.compile()
 
-    response = await workflow.ainvoke({"messages": [HumanMessage(content=repr(input_text))]})
+    response = await workflow.ainvoke({"messages": message_list})
 
     # message_history = []
     # while True:
@@ -208,13 +227,8 @@ async def main(input_text):
 
 # Run main with asyncio
 if __name__ == "__main__":
-    parser = ArgumentParser(description="Run the chatbot with an initial input")
-    parser.add_argument("input_text", nargs="?", default=None, help="Initial input text for the chatbot")
+    parser = ArgumentParser(description="Run the chatbot with an initial input file.")
+    parser.add_argument("file_path", help="Path to the chat history file.")
     args = parser.parse_args()
 
-    if args.input_text:
-        print(f"Received input: {args.input_text}")
-    else:
-        print("No input text provided.")
-
-    asyncio.run(main(args.input_text))
+    asyncio.run(main(args.file_path))
