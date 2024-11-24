@@ -9,7 +9,8 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import java.awt.*
 import javax.swing.*
 import java.io.*
-
+import javax.swing.text.BadLocationException
+import javax.swing.text.StyleConstants
 
 
 class Codi : AnAction() {
@@ -64,11 +65,11 @@ class Codi : AnAction() {
         chatFrame.setSize(600, 500)
         chatFrame.minimumSize = Dimension(500, 400)
 
-        val chatArea = JTextArea()
+        val chatArea = JTextPane()
         chatArea.isEditable = false
         chatArea.background = Color(45, 45, 45) // Dark gray
         chatArea.foreground = Color(255, 255, 255) // White
-        chatArea.font = Font("Consolas", Font.PLAIN, 14)
+        chatArea.font = Font("Consolas", Font.PLAIN, 18)
 
         val scrollPane = JScrollPane(chatArea)
         chatFrame.add(scrollPane, BorderLayout.CENTER)
@@ -101,15 +102,38 @@ class Codi : AnAction() {
 
         val messageList = mutableListOf<String>()
 
+
         fun appendMessage(role: String, message: String, color: Color) {
-            chatArea.append("$role: $message\n")
-            chatArea.caretPosition = chatArea.document.length // Auto-scroll
+            // Create a styled document for the JTextPane
+            val styledDoc = chatArea.styledDocument
+
+            // Create a style for the message
+            val style = chatArea.addStyle(role, null)
+            StyleConstants.setForeground(style, color)
+            StyleConstants.setBold(style, true) // Bold for the role
+
+            try {
+                // Append the role with the specified style
+                styledDoc.insertString(styledDoc.length, "$role: ", style)
+
+                // Use a default style for the message text
+                StyleConstants.setBold(style, false)
+                styledDoc.insertString(styledDoc.length, "$message\n", style)
+            } catch (e: BadLocationException) {
+                e.printStackTrace()
+            }
+
+            // Auto-scroll to the bottom
+            chatArea.caretPosition = styledDoc.length
         }
+
+        appendMessage("Codi", "Hello, I'm Codi! How can I assist you today?", Color(0, 188, 169))
+        messageList.add("Copilot: Hello, I'm Codi! How can I assist you today?\n")
 
         sendButton.addActionListener {
             val userInput = userInputField.text.trim()
             if (userInput.isNotEmpty()) {
-                appendMessage("You", userInput, Color(0, 150, 136))
+                appendMessage("You", userInput, Color(255, 255, 255))
                 userInputField.text = ""
                 messageList.add("You: $userInput\n")
                 processChatInput(messageList, chatArea, ::appendMessage)
@@ -123,7 +147,7 @@ class Codi : AnAction() {
                 val parsedFileContent = repr(fileContent)
                 val combinedInput = "Context:$parsedFileContent User Input: $userInput"
                 println(combinedInput)
-                appendMessage("You (with context)", userInput, Color(0, 150, 136))
+                appendMessage("You (with context)", userInput, Color(255, 255, 255))
                 userInputField.text = ""
                 messageList.add("You (with context): $combinedInput\n")
                 processChatInput(messageList, chatArea, ::appendMessage)
@@ -150,7 +174,7 @@ class Codi : AnAction() {
     }
 
 
-    private fun processChatInput(messageList: MutableList<String>, chatArea: JTextArea, appenMessage: (String, String, Color) -> Unit) {
+    private fun processChatInput(messageList: MutableList<String>, chatArea: JTextPane, appendMessage: (String, String, Color) -> Unit) {
 
         val tempFile = File.createTempFile("chat_history", ".txt")
         tempFile.writeText(messageList.joinToString("\n"))
@@ -198,18 +222,17 @@ class Codi : AnAction() {
                 try {
                     // Append the chatbot's response to the chat area
                     val response = get()
-                    chatArea.append("Copilot: $response\n")
+                    appendMessage("Codi", response, Color(0, 188, 169))
                     messageList.add("Copilot: $response\n")
                     println(response)
                 } catch (ex: Exception) {
-                    chatArea.append("Error communicating with chatbot: ${ex.message}\n")
+                    appendMessage("System", "Error communicating with chatbot: ${ex.message}", Color(244, 67, 54))
                     messageList.add("Copilot: Error communicating with chatbot: ${ex.message}\n")
                 }
             }
         }
-
         // Start the worker
-        chatArea.append("Copilot: Thinking...\n")
+        appendMessage("Codi", "Thinking...", Color(0, 150, 136))
         worker.execute()
     }
 

@@ -49,6 +49,7 @@ def run_python_docker(code: str) -> dict:
         exit_status = container.wait()["StatusCode"]
         raw_logs = container.logs().decode("utf-8")
         logs = clean_logs(raw_logs)
+        print(logs)
 
         # Clean up container
         container.remove()
@@ -76,6 +77,7 @@ def lint_python_docker(code: str) -> dict:
         
     """
 
+    print("\n\nPYTHON LINT\n\n")
     client = docker.from_env()
     container_image = "tomassoares/jetbrains-cleaner-tool:latest"
 
@@ -131,6 +133,7 @@ def clean_c_docker(code: str, params: list) -> dict:
         dict: Contains the success flag, sanitize (valgrind+fsanitize) output, and any errors.
     """
 
+    print("\n\nC\n\n")
     # Remove markdown delimiters from the code
     code = trim_md(code)
 
@@ -218,6 +221,7 @@ def lint_c_docker(code: str) -> dict:
         dict: Contains the success flag, linting output, and any errors.
     """
 
+    print("\n\nC LINT\n\n")
     # Remove the markdown delimiters from the given code string
     code = trim_md(code)
 
@@ -276,6 +280,7 @@ def clean_cpp_docker(code: str, params: list) -> dict:
         dict: Contains the success flag, sanitize (valgrind+fsanitize) output, and any errors.
     """
 
+    print("\n\nC++\n\n")
     # Remove markdown delimiters from the code
     code = trim_md(code)
 
@@ -359,6 +364,7 @@ def lint_cpp_docker(code: str) -> dict:
         dict: Contains the success flag, linting output, and any errors.
     """
 
+    print("\n\nC++ LINT\n\n")
     # Remove the markdown delimiters from the given code string
     code = trim_md(code)
 
@@ -422,6 +428,7 @@ def bing_search(query: str, count: int = 3) -> str:
         str: A formatted string of the top search results from specific domains, including titles and content in paragraphs.
         If no results are found or an error occurs, an appropriate error message is returned.
     """
+    print("\n\nBING SEARCH\n\n")
     bing_api_key = "636db1aa1d4c4169b1b365d0514940f4"  # Replace with your Bing API key
     bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
     headers = {"Ocp-Apim-Subscription-Key": bing_api_key}
