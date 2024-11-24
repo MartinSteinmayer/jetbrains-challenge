@@ -3,65 +3,17 @@ This file contains the tools that will be used in the LLM.
 """
 
 # General imports
-import os
 import requests
 import docker
 import uuid
 import tempfile
 import docker.utils
-from typing import Literal
 
-from utils import trim_md, clean_logs
+from urllib.parse import urlparse
+from utils import trim_md, clean_logs, format_pylint_output, extract_webpage_content
 
 # Langchain
 from langchain_core.tools import tool
-
-
-# Define the Bing Search Tool
-@tool
-def bing_search(query: str, count: int = 3) -> str:
-    """
-    Perform a web search using Azure Bing Search API.
-
-    This function performs a web search using the Azure Bing Search API. 
-    It is designed to handle queries specifically related to JetBrains tools, 
-    such as PyCharm and IntelliJ.
-
-    Args:
-        query (str): The search query string.
-        count (int, optional): The number of search results to return. Defaults to 3.
-
-    Returns:
-        str: A formatted string of the top search results, including title, snippet, and URL.
-        If no results are found or an error occurs, an appropriate error message is returned.
-
-    Raises:
-        requests.RequestException: If the HTTP request fails or the Bing API endpoint is unreachable.
-    """
-    print("entered")
-    bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
-    bing_api_key = "636db1aa1d4c4169b1b365d0514940f4"  # Replace with your Bing API Key
-
-    headers = {"Ocp-Apim-Subscription-Key": bing_api_key}
-    params = {"q": query, "count": count}
-
-    try:
-        response = requests.get(bing_endpoint, headers=headers, params=params)
-        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
-    except requests.RequestException as e:
-        return f"Failed to perform web search: {str(e)}"
-
-    # Parse the results
-    results = response.json().get("webPages", {}).get("value", [])
-    if not results:
-        return "No results found."
-
-    # Format and return the top results
-    formatted_results = "\n\n".join(
-        [f"Title: {result['name']}\nSnippet: {result['snippet']}\nLink: {result['url']}" for result in results])
-    print(formatted_results)
-    return formatted_results
-
 
 # Python error check
 @tool
@@ -109,129 +61,7 @@ def run_python_docker(code: str) -> dict:
         return {"success": False, "output": None, "error": str(e)}
 
 
-# C sanitizer
-@tool
-def clean_c_docker(code: str, params: list) -> dict:
-    """
-    Compiles C code in docker container and runs valgrind leak sanitization to report potential leaks.
-
-    Args:
-        code (str): The C source code to compile and sanitize using leak sanitizer and valgrind.
-        params (list): A list of strings representing the parameters that are given to the c code to run.
-
-    Returns:
-        dict: Contains the success flag, sanitize (valgrind+fsaniitze) output, and any errors.
-    """
-
-    # Remove the markdown delimiters from the given code string
-    code = trim_md(code)
-    try:
-        client = docker.from_env()
-        # Create a unique filename for the C source code file and the executable
-        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
-        executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
-        executable_filename_valgrind = f"/tmp/{uuid.uuid4().hex}_valgrind"
-
-        # Create a temporary container with the C image
-        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
-            temp_file.write(code)
-            temp_file.close()
-
-            # Docker run command
-            command = (
-                f"sh -c 'gcc {source_filename} -o {executable_filename_asan} "
-                f"-fsanitize=address,undefined -static-libasan && "
-                f"./{executable_filename_asan} {' '.join(params)} && "
-                f"gcc {source_filename} -o {executable_filename_valgrind} && "
-                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'"
-            )
-
-            container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
-                                              command=command,
-                                              volumes={temp_file.name: {
-                                                  'bind': f'{source_filename}',
-                                                  'mode': 'ro'
-                                              }},
-                                              detach=True,
-                                              tty=True,
-                                              stdin_open=True)
-
-            # Wait for the code to finish and get the exit status code and logs
-            exit_status = container.wait()["StatusCode"]
-            raw_logs = container.logs().decode("utf-8")
-            logs = clean_logs(raw_logs)
-
-            # Cleanup container
-            container.remove()
-
-            if exit_status == 0:
-                return {"success": True, "output": logs, "error": None}
-            else:
-                return {"success": False, "output": None, "error": logs}
-
-    except Exception as e:
-        return {"success": False, "output": None, "error": str(e)}
-
-
-# C linter
-@tool
-def lint_c_docker(code: str) -> dict:
-    """
-    Lints C code in docker container with clang-tidy to enforce code style.
-
-    Args:
-        code (str): The C source code to lint.
-
-    Returns:
-        dict: Contains the success flag, linting output, and any errors.
-    """
-
-    # Remove the markdown delimiters from the given code string
-    code = trim_md(code)
-
-    try:
-        client = docker.from_env()
-
-        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
-
-        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
-            temp_file.write(code)
-            temp_file.close()
-
-            # Command to lint the code using clang-tidy
-            command = (
-                f"sh -c 'clang-tidy {source_filename} -- && "
-                f"cppcheck {source_filename}'"    
-            )
-
-            container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool:latest",
-                                              command=command,
-                                              volumes={temp_file.name: {
-                                                  'bind': f'{source_filename}',
-                                                  'mode': 'ro'
-                                              }},
-                                              detach=True,
-                                              tty=True,
-                                              stdin_open=True)
-
-            # Wair for linting to complete
-            exit_status = container.wait()["StatusCode"]
-            raw_logs = container.logs().decode('utf-8')
-            logs = clean_logs(raw_logs)
-
-            # Cleanup container
-            container.remove()
-
-            if exit_status == 0:
-                return {"success": True, "output": logs, "error": None}
-            else:
-                return {"success": True, "output": None, "error": logs}
-
-    except Exception as e:
-        return {"success": False, "output": None, "error": str(e)}
-
-
-#Python linter
+# Python linter
 @tool
 def lint_python_docker(code: str) -> dict:
 
@@ -239,7 +69,7 @@ def lint_python_docker(code: str) -> dict:
     Lint the provided Python code using pylint inside a Docker container.
 
     Args:
-        code: A string containing the Python code to be linted.
+        code (str): A string containing the Python code to be linted.
 
     Returns:
         dict: Contains "success" (bool), "output" (str), and "error" (str).
@@ -284,29 +114,356 @@ def lint_python_docker(code: str) -> dict:
         return {"success": False, "output": None, "error": str(e)}
 
 
-def format_pylint_output(raw_logs: str) -> str:
+# C sanitizer
+@tool
+def clean_c_docker(code: str, params: list) -> dict:
     """
-    Converts raw pylint logs into a more human-readable format.
-    """
-    lines = raw_logs.strip().splitlines()
-    formatted_output = []
+    Compiles C code in docker container and runs valgrind + fsanitize to report potential leaks.
 
-    for line in lines:
-        if line.startswith("************* Module"):
-            formatted_output.append(f"\nModule: {line.split()[-1]}")
-        elif line.startswith("/") and ":" in line:
-            # Extract file, line, column, and error message
-            parts = line.split(":")
-            file_path = parts[0]
-            line_number = parts[1]
-            column_number = parts[2]
-            error_message = ":".join(parts[3:]).strip()
-            formatted_output.append(
-                f"File: {file_path}, Line: {line_number}, Column: {column_number}\n  -> {error_message}"
+    Args:
+        code (str): The C source code to compile and sanitize using leak sanitizer and valgrind.
+        params (list): A list of strings representing the parameters that are given to the C code to run.
+
+    Returns:
+        dict: Contains the success flag, sanitize (valgrind+fsanitize) output, and any errors.
+    """
+    
+    # Remove markdown delimiters from the code
+    code = trim_md(code)
+
+    try:
+        client = docker.from_env()
+        # Generate unique filenames for the source code and executables
+        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
+        executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
+        executable_filename_valgrind = f"/tmp/{uuid.uuid4().hex}_valgrind"
+
+        # Create a temporary file to hold the C code
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file.close()
+
+        # Create and start the container with a shell (this allows executing multiple commands)
+        container = client.containers.run(
+            image="tomassoares/jetbrains-cleaner-tool", 
+            command="sleep infinity",  # Start the container with a long-running process
+            volumes={temp_file.name: {'bind': source_filename, 'mode': 'ro'}},
+            detach=True,
+            tty=True,
+            stdin_open=True
+        )
+
+        try:
+            # Step 1: Compile with AddressSanitizer
+            result = container.exec_run(
+                f"gcc {source_filename} -o {executable_filename_asan} -fsanitize=address,undefined -static-libasan",
+                stderr=True,
+                stdout=True
             )
-        elif "Your code has been rated" in line:
-            formatted_output.append(f"\n{line}")
-        else:
-            formatted_output.append(line)
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in AddressSanitizer compilation"}
 
-    return "\n".join(formatted_output)
+            # Step 2: Compile for Valgrind
+            result = container.exec_run(
+                f"gcc {source_filename} -o {executable_filename_valgrind}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in Valgrind compilation"}
+
+            # Step 3: Run Valgrind on the compiled code
+            result = container.exec_run(
+                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Valgrind execution failed"}
+
+            # If all commands succeed, return the logs
+            logs = result.output.decode('utf-8')
+            return {"success": True, "output": logs, "error": None}
+
+        except Exception as e:
+            return {"success": False, "output": None, "error": str(e)}
+
+        finally:
+            # Clean up: stop and remove the container
+            container.stop()
+            container.remove()
+
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}
+
+
+# C linter
+@tool
+def lint_c_docker(code: str) -> dict:
+    """
+    Lints C code in docker container with clang-tidy, clang-format and cppcheck to enforce code style.
+
+    Args:
+        code (str): The C source code to lint.
+
+    Returns:
+        dict: Contains the success flag, linting output, and any errors.
+    """
+
+    # Remove the markdown delimiters from the given code string
+    code = trim_md(code)
+
+    try:
+        client = docker.from_env()
+
+        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
+
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file.close()
+
+            # Command to lint the code using clang-tidy
+            command = (
+                f"sh -c 'clang-tidy {source_filename} -- && "
+                f"clang-format -i {source_filename} && "
+                f"cppcheck {source_filename}'"    
+            )
+
+            container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool:latest",
+                                              command=command,
+                                              volumes={temp_file.name: {
+                                                  'bind': f'{source_filename}',
+                                                  'mode': 'ro'
+                                              }},
+                                              detach=True,
+                                              tty=True,
+                                              stdin_open=True)
+
+            # Wair for linting to complete
+            exit_status = container.wait()["StatusCode"]
+            raw_logs = container.logs().decode('utf-8')
+            logs = clean_logs(raw_logs)
+
+            # Cleanup container
+            container.remove()
+
+            if exit_status == 0:
+                return {"success": True, "output": logs, "error": None}
+            else:
+                return {"success": True, "output": None, "error": logs}
+
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}
+
+
+# C++ sanitizer
+@tool
+def clean_cpp_docker(code: str, params: list) -> dict:
+    """
+    Compiles C++ code in docker container and runs valgrind + fsanitize to report potential leaks.
+
+    Args:
+        code (str): The C++ source code to compile and sanitize using leak sanitizer and valgrind.
+        params (list): A list of strings representing the parameters that are given to the C code to run.
+
+    Returns:
+        dict: Contains the success flag, sanitize (valgrind+fsanitize) output, and any errors.
+    """
+    
+    # Remove markdown delimiters from the code
+    code = trim_md(code)
+
+    try:
+        client = docker.from_env()
+        # Generate unique filenames for the source code and executables
+        source_filename = f"/tmp/{uuid.uuid4().hex}.cpp"
+        executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
+        executable_filename_valgrind = f"/tmp/{uuid.uuid4().hex}_valgrind"
+
+        # Create a temporary file to hold the C++ code
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file.close()
+
+        # Create and start the container with a shell (this allows executing multiple commands)
+        container = client.containers.run(
+            image="tomassoares/jetbrains-cleaner-tool", 
+            command="sleep infinity",  # Start the container with a long-running process
+            volumes={temp_file.name: {'bind': source_filename, 'mode': 'ro'}},
+            detach=True,
+            tty=True,
+            stdin_open=True
+        )
+
+        try:
+            # Step 1: Compile with AddressSanitizer
+            result = container.exec_run(
+                f"g++ {source_filename} -o {executable_filename_asan} -fsanitize=address,undefined -static-libasan",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in AddressSanitizer compilation"}
+
+            # Step 2: Compile for Valgrind
+            result = container.exec_run(
+                f"gcc {source_filename} -o {executable_filename_valgrind}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in Valgrind compilation"}
+
+            # Step 3: Run Valgrind on the compiled code
+            result = container.exec_run(
+                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Valgrind execution failed"}
+
+            # If all commands succeed, return the logs
+            logs = result.output.decode('utf-8')
+            return {"success": True, "output": logs, "error": None}
+
+        except Exception as e:
+            return {"success": False, "output": None, "error": str(e)}
+
+        finally:
+            # Clean up: stop and remove the container
+            container.stop()
+            container.remove()
+
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}
+
+
+# C++ linter
+@tool
+def lint_cpp_docker(code: str) -> dict:
+    """
+    Lints C++ code in docker container with clang-tidy, clang-format and cppcheck to enforce code style.
+
+    Args:
+        code (str): The C++ source code to lint.
+
+    Returns:
+        dict: Contains the success flag, linting output, and any errors.
+    """
+
+    # Remove the markdown delimiters from the given code string
+    code = trim_md(code)
+
+    try:
+        client = docker.from_env()
+
+        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
+
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file.close()
+
+            # Command to lint the code using clang-tidy
+            command = (
+                f"sh -c 'clang-tidy {source_filename} -- && "
+                f"clang-format -i {source_filename} && "
+                f"cppcheck {source_filename}'"    
+            )
+            try:
+                container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool:latest",
+                                                  command=command,
+                                                  volumes={temp_file.name: {
+                                                      'bind': f'{source_filename}',
+                                                      'mode': 'ro'
+                                                  }},
+                                                  detach=True,
+                                                  tty=True,
+                                                  stdin_open=True)
+
+                # Wair for linting to complete
+                exit_status = container.wait(20)["StatusCode"]
+                raw_logs = container.logs().decode('utf-8')
+                logs = clean_logs(raw_logs)
+
+            except Exception as docker_e:
+                container.remove(force=True)
+                return {"success" : False, "output" : None, "error" : str(docker_e)}
+            
+            # Cleanup container
+            container.remove()
+
+            if exit_status == 0:
+                return {"success": True, "output": logs, "error": None}
+            else:
+                return {"success": True, "output": None, "error": logs}
+
+    except Exception as e:
+        return {"success": False, "output": None, "error": str(e)}
+
+
+# Bing search for allowed webpages 
+@tool
+def bing_search(query: str, count: int = 3) -> str:
+    """
+    Perform a web search using Azure Bing Search API and extract meaningful content from the results.
+
+    Args:
+        query (str): The search query string.
+        count (int, optional): The number of search results to return. Defaults to 3.
+
+    Returns:
+        str: A formatted string of the top search results from specific domains, including titles and content in paragraphs.
+        If no results are found or an error occurs, an appropriate error message is returned.
+    """
+    bing_api_key = "636db1aa1d4c4169b1b365d0514940f4"  # Replace with your Bing API key
+    bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
+    headers = {"Ocp-Apim-Subscription-Key": bing_api_key}
+    params = {"q": query, "count": count}
+
+    # Allowed domains
+    allowed_domains = ["stackoverflow.com", "geeksforgeeks.org", "jetbrains.com"]
+
+    try:
+        # Perform the Bing search
+        response = requests.get(bing_endpoint, headers=headers, params=params)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        return f"Failed to perform web search: {str(e)}"
+
+    # Parse the Bing search results
+    results = response.json().get("webPages", {}).get("value", [])
+    if not results:
+        return "No results found."
+
+    # Process and extract content from each result
+    formatted_results = []
+    for result in results:
+        title = result.get("name", "No Title")
+        url = result.get("url", "No URL")
+
+        # Check if the result belongs to one of the allowed domains
+        domain = urlparse(url).netloc
+        if not any(allowed_domain in domain for allowed_domain in allowed_domains):
+            continue
+
+        # Extract content from the URL
+        try:
+            webpage_content = extract_webpage_content(url)
+            if webpage_content:  # Only include if content was successfully extracted
+                formatted_results.append(f"**{title}**\n\n{webpage_content}\n\n_________________________________________")
+        except Exception:
+            # Skip this result if extraction fails
+            continue
+
+    # If no results match the allowed domains, return a message
+    if not formatted_results:
+        return "No results found from the specified domains."
+
+    return "\n\n".join(formatted_results)
