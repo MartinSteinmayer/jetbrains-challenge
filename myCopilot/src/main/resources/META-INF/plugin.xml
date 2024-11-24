@@ -8,29 +8,82 @@
     <name>MyCopilot</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
-    <vendor email="support@yourcompany.com" url="https://www.yourcompany.com">YourCompany</vendor>
+    <vendor email="martin.j.steinmayer@gmail.com" url="https://www.codi.com">Codi</vendor>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
-    <description><![CDATA[
-    Enter short description for your plugin here.<br>
-    <em>most HTML tags may be used</em>
-  ]]></description>
+    <description>Codi Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+        Simple HTML elements (text formatting, paragraphs, and lists) can be added inside o</description>
+
+    <actions>
+        <!--
+          See https://plugins.jetbrains.com/docs/intellij/basic-action-system.html#registering-actions
+          for information about the elements and attributes used for actions and groups.
+
+          This <action> element adds a static menu item in first position of the Tools menu that shows PopupDialogAction.
+          Note this element has no text or description attributes because translations for them are given
+          by action-id in the resource-bundle.
+          An <override-text> element is also used for demonstration purposes to show alternate text and description strings
+          for this action's entries in the MainMenu. (Which includes the ToolsMenu. Try commenting out the override-text
+          element and see how the menu text changes.) The alternate text and description attributes do not
+          appear here because they are defined by action-id in the resource-bundle.
+        -->
+        <!--
+          All of the following menu groups add the action PopupDialogAction to menus in different ways.
+          Note that even though these groups reuse the same action class, in each use the action ids are unique.
+
+          GroupedActions demonstrates declaring an action group using the default ActionGroup implementation provided by the
+          IntelliJ Platform framework. (Note the lack of a group "class" attribute.) GroupedActions gets inserted after
+          PopupDialogAction in the Tools menu. Because the group's implementation is default, it cannot impose
+          enable/disable conditions. Instead it must rely on the conditions imposed by the parent menu where it is inserted.
+          It declares one action in the group.
+
+        <group id="org.intellij.sdk.action.GroupedActions"
+               text="Static Grouped Actions" description="SDK statically grouped action example"
+               popup="true" icon="SdkIcons.Sdk_default_icon">
+            <add-to-group group-id="ToolsMenu" anchor="after" relative-to-action="org.intellij.sdk.action.PopupDialogAction"/>
+            <action id="org.intellij.sdk.action.GroupPopDialogAction" class="org.intellij.sdk.action.PopupDialogAction"
+                    text="A Group Action" description="SDK static grouped action example"
+                    icon="SdkIcons.Sdk_default_icon">
+            </action>
+        </group>
+        -->
+        <!--
+          CustomDefaultActionGroup demonstrates declaring an action group based on a ActionGroup class supplied by this
+          plugin. This group is to be inserted atop the Editor Popup Menu. It declares one action in the group.
+          The group and action implementations are internationalized, so their declarations do not use the text or
+          description attributes. Instead, the information is defined in the BasicActionsBundle.
+
+        <group id="org.intellij.sdk.action.CustomDefaultActionGroup"
+               class="org.intellij.sdk.action.CustomDefaultActionGroup"
+               popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <action id="org.intellij.sdk.action.CustomGroupedAction" class="org.intellij.sdk.action.PopupDialogAction"
+                    icon="SdkIcons.Sdk_default_icon"/>
+        </group>
+        -->
+        <!--
+          DynamicActionGroup demonstrates declaring an action group without a static action declaration.
+          An action is added to the group programmatically in the DynamicActionGroup implementation.
+
+        <group id="org.intellij.sdk.action.DynamicActionGroup" class="org.intellij.sdk.action.DynamicActionGroup"
+               popup="true" text="Dynamically Grouped Actions" description="SDK dynamically grouped action example"
+               icon="SdkIcons.Sdk_default_icon">
+            <add-to-group group-id="ToolsMenu" anchor="after" relative-to-action="org.intellij.sdk.action.GroupedActions"/>
+        </group>
+        -->
+        <action id="org.mycopilot.mycopilot.PopUpChat" class="org.mycopilot.mycopilot.PopUpChat" text="PopUpChat"
+                description="Chat pops up">
+            <add-to-group group-id="ToolsMenu" anchor="first"/>
+        </action>
+    </actions>
 
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
-
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <action id="org.mycopilot.myCopilot.RunChatbotAction"
-                class="org.mycopilot.myCopilot.RunChatbotAction"
-                text="Run Chatbot"
-                description="Run the chatbot backend to interact with users.">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-        </action>
-
     </extensions>
 </idea-plugin>
