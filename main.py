@@ -186,26 +186,15 @@ async def main():
     workflow = graph.compile()
 
     test_input = """
-please lint the following code:
+    please check the following code!
+#include <stdio.h>
 
-#include<stdio.h>
-
-void unused_function() {
-    printf("This function is not used!\n");
-}
-
-int main(){
-
-    int x=10,y=20;
-    if(x>y) 
-    {
-        printf("X is greater\n");
-    }else{
-        printf( "Y is greater or equal\n");
-    }
-
-    for(int i=0;i<5;i++){ printf("%d\n",i); } 
-
+int main() {
+    int a, b;
+    printf("Enter two numbers: ");
+    scanf("%d %d", &a, &b);
+    int sum; // Uninitialized variable
+    printf("Sum is: %d\n", sum); // Using uninitialized variable
     return 0;
 }
     """

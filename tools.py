@@ -125,11 +125,15 @@ def clean_c_docker(code: str, params: list) -> dict:
         params (list): A list of strings representing the parameters that are given to the c code to run.
 
     Returns:
-        dict: Contains the success flag, sanitize (valgrind+fsaniitze) output, and any errors.
+        dict: Contains the success flag, sanitize (valgrind+fsanitize) output, and any errors.
     """
 
     # Remove the markdown delimiters from the given code string
+    print("Untrimmed code: ")
+    print(code)
     code = trim_md(code)
+    print("Trimmed code: ")
+    print(code)
     try:
         client = docker.from_env()
         # Create a unique filename for the C source code file and the executable
@@ -145,29 +149,34 @@ def clean_c_docker(code: str, params: list) -> dict:
             # Docker run command
             command = (
                 f"sh -c 'gcc {source_filename} -o {executable_filename_asan} "
-                f"-fsanitize=address,undefined -static-libasan && "
-                f"./{executable_filename_asan} {' '.join(params)} && "
-                f"gcc {source_filename} -o {executable_filename_valgrind} && "
-                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'"
+                f"-fsanitize=address,undefined -static-libasan || exit 1; "
+                f"{executable_filename_asan} {' '.join(params)} || exit 2; "
+                f"gcc {source_filename} -o {executable_filename_valgrind} || exit 3; "
+                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)} || exit 4;'"
             )
 
-            container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
-                                              command=command,
-                                              volumes={temp_file.name: {
-                                                  'bind': f'{source_filename}',
-                                                  'mode': 'ro'
-                                              }},
-                                              detach=True,
-                                              tty=True,
-                                              stdin_open=True)
+            try:
+                container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
+                                                command=command,
+                                                volumes={temp_file.name: {
+                                                    'bind': f'{source_filename}',
+                                                    'mode': 'ro'
+                                                }},
+                                                detach=True,
+                                                tty=True,
+                                                stdin_open=True)
 
-            # Wait for the code to finish and get the exit status code and logs
-            exit_status = container.wait()["StatusCode"]
-            raw_logs = container.logs().decode("utf-8")
-            logs = clean_logs(raw_logs)
+                # Wait for the code to finish and get the exit status code and logs
+                exit_status = container.wait(timeout=10)["StatusCode"]
+                raw_logs = container.logs().decode("utf-8")
+                logs = clean_logs(raw_logs)
+
+            except Exception as docker_e:
+                container.remove(force=True)
+                return {"success" : False, "output" : None, "error" : str(docker_e)}
 
             # Cleanup container
-            container.remove()
+            container.remove(force=True)
 
             if exit_status == 0:
                 return {"success": True, "output": logs, "error": None}
@@ -267,35 +276,40 @@ def clean_cpp_docker(code: str, params: list) -> dict:
             # Docker run command
             command = (
                 f"sh -c 'g++ {source_filename} -o {executable_filename_asan} "
-                f"-fsanitize=address,undefined -static-libasan && "
-                f"./{executable_filename_asan} {' '.join(params)} && "
-                f"g++ {source_filename} -o {executable_filename_valgrind} && "
-                f"valgrind --leak-check=full --track-origins=yes ./{executable_filename_valgrind} {' '.join(params)}'"
+                f"-fsanitize=address,undefined -static-libasan || exit 1; "
+                f"{executable_filename_asan} {' '.join(params)} || exit 2; "
+                f"g++ {source_filename} -o {executable_filename_valgrind} || exit 3; "
+                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)} || exit 4;'"
             )
 
-            container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
-                                            command=command,
-                                            volumes={temp_file.name: {
-                                                'bind': f'{source_filename}',
-                                                'mode': 'ro'
-                                            }},
-                                            detach=True,
-                                            tty=True,
-                                            stdin_open=True)
+            try:
+                container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
+                                                command=command,
+                                                volumes={temp_file.name: {
+                                                    'bind': f'{source_filename}',
+                                                    'mode': 'ro'
+                                                }},
+                                                detach=True,
+                                                tty=True,
+                                                stdin_open=True)
 
-            # Wait for the code to finish and get the exit status code and logs
-            exit_status = container.wait()["StatusCode"]
-            raw_logs = container.logs().decode("utf-8")
-            logs = clean_logs(raw_logs)
+                # Wait for the code to finish and get the exit status code and logs
+                exit_status = container.wait(timeout=30)["StatusCode"]
+                raw_logs = container.logs().decode("utf-8")
+                logs = clean_logs(raw_logs)
+
+            except Exception as docker_e:
+                container.remove(force=True)
+                return {"success" : False, "output" : None, "error" : str(docker_e)}
 
             # Cleanup container
-            container.remove()
+            container.remove(force=True)
 
             if exit_status == 0:
                 return {"success": True, "output": logs, "error": None}
             else:
                 return {"success": False, "output": None, "error": logs}
-
+        
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
 
@@ -331,22 +345,26 @@ def lint_cpp_docker(code: str) -> dict:
                 f"clang-format -i {source_filename} && "
                 f"cppcheck {source_filename}'"    
             )
+            try:
+                container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool:latest",
+                                                  command=command,
+                                                  volumes={temp_file.name: {
+                                                      'bind': f'{source_filename}',
+                                                      'mode': 'ro'
+                                                  }},
+                                                  detach=True,
+                                                  tty=True,
+                                                  stdin_open=True)
 
-            container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool:latest",
-                                              command=command,
-                                              volumes={temp_file.name: {
-                                                  'bind': f'{source_filename}',
-                                                  'mode': 'ro'
-                                              }},
-                                              detach=True,
-                                              tty=True,
-                                              stdin_open=True)
+                # Wair for linting to complete
+                exit_status = container.wait(20)["StatusCode"]
+                raw_logs = container.logs().decode('utf-8')
+                logs = clean_logs(raw_logs)
 
-            # Wair for linting to complete
-            exit_status = container.wait()["StatusCode"]
-            raw_logs = container.logs().decode('utf-8')
-            logs = clean_logs(raw_logs)
-
+            except Exception as docker_e:
+                container.remove(force=True)
+                return {"success" : False, "output" : None, "error" : str(docker_e)}
+            
             # Cleanup container
             container.remove()
 
