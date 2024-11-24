@@ -4,6 +4,7 @@ Main implementation of the multi-agent copilot.
 
 # General imports
 from typing import Annotated, Literal, TypedDict, Sequence, Callable
+from argparse import ArgumentParser
 import asyncio
 import os
 from langchain_core import messages
@@ -70,10 +71,13 @@ async def agent_node(state, agent, name):
     return {"messages": [result], "sender": name}
 
 
-async def main():
+async def main(input_text):
 
-    # Load environment variables
-    load_dotenv()
+    # Specify the absolute path to your .env file
+    env_path = "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/.env"
+
+    # Load the .env file
+    load_dotenv(dotenv_path=env_path)
 
     # Define the model for the supervisor
     model = ChatOpenAI(model="gpt-4o",
@@ -119,7 +123,8 @@ async def main():
     """
 
     linter_agent = functools.partial(agent_node,
-                                     agent=create_agent([lint_c_docker, lint_cpp_docker, lint_python_docker], linter_prompt),
+                                     agent=create_agent([lint_c_docker, lint_cpp_docker, lint_python_docker],
+                                                        linter_prompt),
                                      name="Linter")
 
     optimizer_prompt = "You are an optimizer agent. You are a general solution that should be used when the user wants to generate code, optimize an existing piece of code or wants an explanation for a piece of code."
@@ -129,7 +134,8 @@ async def main():
     1 - You will compile the code and run the code based on which programming language it is. This is a dict based on language and tool name: {"c" : "clean_c_docker", "c++" : "clean_cpp_docker", "python" : "run_python_docker"}.
     2 - Make sure you provide to the user a simplified version of the output of the sanitizer tool."""
     sanitizer_agent = functools.partial(agent_node,
-                                        agent=create_agent([clean_c_docker, clean_cpp_docker, run_python_docker], sanitizer_prompt),
+                                        agent=create_agent([clean_c_docker, clean_cpp_docker, run_python_docker],
+                                                           sanitizer_prompt),
                                         name="Sanitizer")
 
     helper_prompt = "You are a helper agent. You are responsible for answering questions about Jetbrains or general questions the user might ask that are unrelated to code. If you are asked a questions related to Jetbrains, always use the bing_search tool to find the answer."
@@ -185,22 +191,32 @@ async def main():
 
     workflow = graph.compile()
 
-    test_input = """
-    please check the following code!
-#include <stdio.h>
+    #     test_input = """
+    # please lint the following code:
+    #
+    # #include<stdio.h> // Missing space between includes
+    #
+    # void unused_function() { // Unused function
+    #     printf("This function is not used!\n");
+    # }
+    #
+    # int main(){
+    #
+    #     int x=10,y=20; // Missing spaces around operators
+    #     if(x>y) // Missing spaces around operator
+    #     {
+    #         printf("X is greater\n");
+    #     }else{
+    #         printf( "Y is greater or equal\n"); // Inconsistent spacing
+    #     }
+    #
+    #     for(int i=0;i<5;i++){ printf("%d\n",i); } // Single-line loop (not recommended)
+    #
+    #     return 0;
+    # }
+    #     """
 
-int main() {
-    int a, b;
-    printf("Enter two numbers: ");
-    scanf("%d %d", &a, &b);
-    int sum; // Uninitialized variable
-    printf("Sum is: %d\n", sum); // Using uninitialized variable
-    return 0;
-}
-    """
-
-    response = await workflow.ainvoke({"messages": [HumanMessage(content=repr(test_input))]})
-    print(response["messages"][-1].content)
+    response = await workflow.ainvoke({"messages": [HumanMessage(content=repr(input_text))]})
 
     # message_history = []
     # while True:
@@ -210,8 +226,19 @@ int main() {
     #     message_history = response["messages"]
     #     response_text = response["messages"][-1].content
     #     print(f"Response: {response_text}")
+    print(response["messages"][-1].content)
+    return response["messages"][-1].content
 
 
 # Run main with asyncio
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = ArgumentParser(description="Run the chatbot with an initial input")
+    parser.add_argument("input_text", nargs="?", default=None, help="Initial input text for the chatbot")
+    args = parser.parse_args()
+
+    if args.input_text:
+        print(f"Received input: {args.input_text}")
+    else:
+        print("No input text provided.")
+
+    asyncio.run(main(args.input_text))
