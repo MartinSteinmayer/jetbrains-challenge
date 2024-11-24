@@ -6,8 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.fileEditor.FileEditorManager
-import java.awt.BorderLayout
-import java.awt.Dimension
+import java.awt.*
 import javax.swing.*
 import java.io.*
 
@@ -45,6 +44,14 @@ class Codi : AnAction() {
         return null
     }
 
+    fun styleButton(button: JButton, bgColor: Color, fgColor: Color) {
+        button.background = bgColor
+        button.foreground = fgColor
+        button.font = Font("Arial", Font.BOLD, 12)
+        button.isFocusPainted = false
+        button.border = BorderFactory.createEmptyBorder(5, 15, 5, 15)
+    }
+
     override fun actionPerformed(event: AnActionEvent) {
         val project: Project? = event.project
         val title = "CODI"
@@ -54,20 +61,35 @@ class Codi : AnAction() {
         val chatFrame = JFrame(title)
         chatFrame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
         chatFrame.layout = BorderLayout()
-        chatFrame.setSize(500, 400)
-        chatFrame.minimumSize = Dimension(400, 300)
+        chatFrame.setSize(600, 500)
+        chatFrame.minimumSize = Dimension(500, 400)
 
         val chatArea = JTextArea()
         chatArea.isEditable = false
+        chatArea.background = Color(45, 45, 45) // Dark gray
+        chatArea.foreground = Color(255, 255, 255) // White
+        chatArea.font = Font("Consolas", Font.PLAIN, 14)
+
         val scrollPane = JScrollPane(chatArea)
         chatFrame.add(scrollPane, BorderLayout.CENTER)
 
         val inputPanel = JPanel(BorderLayout())
-        val userInputField = JTextField()
-        val sendButton = JButton("Send")
-        val sendWithContextButton = JButton("Send with Context") // New button
-        val buttonPanel = JPanel(BorderLayout())
+        inputPanel.background = Color(30, 30, 30) // Darker gray
 
+        val userInputField = JTextField()
+        userInputField.background = Color(50, 50, 50) // Slightly lighter gray
+        userInputField.foreground = Color(255, 255, 255) // White
+        userInputField.caretColor = Color(255, 255, 255)
+        userInputField.font = Font("Consolas", Font.PLAIN, 14)
+
+        val sendButton = JButton("Send")
+        styleButton(sendButton, Color(0, 150, 136), Color(255, 255, 255)) // Teal button
+
+        val sendWithContextButton = JButton("Send with Context") // New button
+        styleButton(sendWithContextButton, Color(255, 87, 34), Color(255, 255, 255)) // Orange button
+
+        val buttonPanel = JPanel(BorderLayout())
+        buttonPanel.background = Color(30, 30, 30) // Match input panel
         buttonPanel.add(sendButton, BorderLayout.WEST)
         buttonPanel.add(sendWithContextButton, BorderLayout.EAST)
 
@@ -79,13 +101,18 @@ class Codi : AnAction() {
 
         val messageList = mutableListOf<String>()
 
+        fun appendMessage(role: String, message: String, color: Color) {
+            chatArea.append("$role: $message\n")
+            chatArea.caretPosition = chatArea.document.length // Auto-scroll
+        }
+
         sendButton.addActionListener {
             val userInput = userInputField.text.trim()
             if (userInput.isNotEmpty()) {
-                chatArea.append("You: $userInput\n")
+                appendMessage("You", userInput, Color(0, 150, 136))
                 userInputField.text = ""
                 messageList.add("You: $userInput\n")
-                processChatInput(messageList, chatArea)
+                processChatInput(messageList, chatArea, ::appendMessage)
             }
         }
 
@@ -96,12 +123,12 @@ class Codi : AnAction() {
                 val parsedFileContent = repr(fileContent)
                 val combinedInput = "Context:$parsedFileContent User Input: $userInput"
                 println(combinedInput)
-                chatArea.append("You (with context): $userInput\n")
+                appendMessage("You (with context)", userInput, Color(0, 150, 136))
                 userInputField.text = ""
                 messageList.add("You (with context): $combinedInput\n")
-                processChatInput(messageList, chatArea)
+                processChatInput(messageList, chatArea, ::appendMessage)
             } else if (fileContent == null) {
-                chatArea.append("No file context available.\n")
+                appendMessage("System", "No file context available.", Color(255, 87, 34)) // Orange for warnings
             }
         }
     }
@@ -123,15 +150,15 @@ class Codi : AnAction() {
     }
 
 
-    private fun processChatInput(messageList: MutableList<String>, chatArea: JTextArea) {
+    private fun processChatInput(messageList: MutableList<String>, chatArea: JTextArea, appenMessage: (String, String, Color) -> Unit) {
 
         val tempFile = File.createTempFile("chat_history", ".txt")
         tempFile.writeText(messageList.joinToString("\n"))
 
         val processBuilder = ProcessBuilder(
-                "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/venv/bin/python3",
-                "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/main.py",
-                tempFile.absolutePath
+            "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/venv/bin/python3",
+            "/home/martinjs/Documents/fullstack-projects/hackatum/jetbrains/main.py",
+            tempFile.absolutePath
         )
 
         // Load environment variables
