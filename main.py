@@ -191,31 +191,6 @@ async def main(input_text):
 
     workflow = graph.compile()
 
-    #     test_input = """
-    # please lint the following code:
-    #
-    # #include<stdio.h> // Missing space between includes
-    #
-    # void unused_function() { // Unused function
-    #     printf("This function is not used!\n");
-    # }
-    #
-    # int main(){
-    #
-    #     int x=10,y=20; // Missing spaces around operators
-    #     if(x>y) // Missing spaces around operator
-    #     {
-    #         printf("X is greater\n");
-    #     }else{
-    #         printf( "Y is greater or equal\n"); // Inconsistent spacing
-    #     }
-    #
-    #     for(int i=0;i<5;i++){ printf("%d\n",i); } // Single-line loop (not recommended)
-    #
-    #     return 0;
-    # }
-    #     """
-
     response = await workflow.ainvoke({"messages": [HumanMessage(content=repr(input_text))]})
 
     # message_history = []
