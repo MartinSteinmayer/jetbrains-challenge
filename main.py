@@ -79,7 +79,7 @@ def parse_chat_history(file_path: str) -> List:
     with open(file_path, "r") as file:
         for line in file:
             line = line.strip()
-            if line.startswith("You:"):
+            if line.startswith("You:") or line.startswith("You (with context):"):
                 messages.append(HumanMessage(content=repr(line[4:].strip())))
             elif line.startswith("Copilot:"):
                 messages.append(AIMessage(content=repr(line[8:].strip())))
