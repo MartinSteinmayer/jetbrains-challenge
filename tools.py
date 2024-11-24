@@ -122,66 +122,79 @@ def clean_c_docker(code: str, params: list) -> dict:
 
     Args:
         code (str): The C source code to compile and sanitize using leak sanitizer and valgrind.
-        params (list): A list of strings representing the parameters that are given to the c code to run.
+        params (list): A list of strings representing the parameters that are given to the C code to run.
 
     Returns:
         dict: Contains the success flag, sanitize (valgrind+fsanitize) output, and any errors.
     """
-
-    # Remove the markdown delimiters from the given code string
-    print("Untrimmed code: ")
-    print(code)
+    
+    # Remove markdown delimiters from the code
     code = trim_md(code)
-    print("Trimmed code: ")
-    print(code)
+
     try:
         client = docker.from_env()
-        # Create a unique filename for the C source code file and the executable
+        # Generate unique filenames for the source code and executables
         source_filename = f"/tmp/{uuid.uuid4().hex}.c"
         executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
         executable_filename_valgrind = f"/tmp/{uuid.uuid4().hex}_valgrind"
 
-        # Create a temporary container with the C image
+        # Create a temporary file to hold the C code
         with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
             temp_file.write(code)
             temp_file.close()
 
-            # Docker run command
-            command = (
-                f"sh -c 'gcc {source_filename} -o {executable_filename_asan} "
-                f"-fsanitize=address,undefined -static-libasan || exit 1; "
-                f"{executable_filename_asan} {' '.join(params)} || exit 2; "
-                f"gcc {source_filename} -o {executable_filename_valgrind} || exit 3; "
-                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)} || exit 4;'"
+        # Create and start the container with a shell (this allows executing multiple commands)
+        container = client.containers.run(
+            image="tomassoares/jetbrains-cleaner-tool", 
+            command="sleep infinity",  # Start the container with a long-running process
+            volumes={temp_file.name: {'bind': source_filename, 'mode': 'ro'}},
+            detach=True,
+            tty=True,
+            stdin_open=True
+        )
+
+        try:
+            # Step 1: Compile with AddressSanitizer
+            result = container.exec_run(
+                f"gcc {source_filename} -o {executable_filename_asan} -fsanitize=address,undefined -static-libasan",
+                stderr=True,
+                stdout=True
             )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in AddressSanitizer compilation"}
 
-            try:
-                container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
-                                                command=command,
-                                                volumes={temp_file.name: {
-                                                    'bind': f'{source_filename}',
-                                                    'mode': 'ro'
-                                                }},
-                                                detach=True,
-                                                tty=True,
-                                                stdin_open=True)
+            # Step 2: Compile for Valgrind
+            result = container.exec_run(
+                f"gcc {source_filename} -o {executable_filename_valgrind}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in Valgrind compilation"}
 
-                # Wait for the code to finish and get the exit status code and logs
-                exit_status = container.wait(timeout=10)["StatusCode"]
-                raw_logs = container.logs().decode("utf-8")
-                logs = clean_logs(raw_logs)
+            # Step 3: Run Valgrind on the compiled code
+            result = container.exec_run(
+                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Valgrind execution failed"}
 
-            except Exception as docker_e:
-                container.remove(force=True)
-                return {"success" : False, "output" : None, "error" : str(docker_e)}
+            # If all commands succeed, return the logs
+            logs = result.output.decode('utf-8')
+            return {"success": True, "output": logs, "error": None}
 
-            # Cleanup container
-            container.remove(force=True)
+        except Exception as e:
+            return {"success": False, "output": None, "error": str(e)}
 
-            if exit_status == 0:
-                return {"success": True, "output": logs, "error": None}
-            else:
-                return {"success": False, "output": None, "error": logs}
+        finally:
+            # Clean up: stop and remove the container
+            container.stop()
+            container.remove()
 
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
@@ -254,62 +267,80 @@ def clean_cpp_docker(code: str, params: list) -> dict:
 
     Args:
         code (str): The C++ source code to compile and sanitize using leak sanitizer and valgrind.
-        params (list): A list of strings representing the parameters that are given to the C++ code to run.
+        params (list): A list of strings representing the parameters that are given to the C code to run.
 
     Returns:
-        dict: Contains the success flag, sanitize (valgrind+fsaniitze) output, and any errors.
+        dict: Contains the success flag, sanitize (valgrind+fsanitize) output, and any errors.
     """
-    # Remove the markdown delimiters from the given code string
+    
+    # Remove markdown delimiters from the code
     code = trim_md(code)
+
     try:
         client = docker.from_env()
-        # Create a unique filename for the C source code file and the executable
-        source_filename = f"/tmp/{uuid.uuid4().hex}.c"
+        # Generate unique filenames for the source code and executables
+        source_filename = f"/tmp/{uuid.uuid4().hex}.cpp"
         executable_filename_asan = f"/tmp/{uuid.uuid4().hex}_asan"
         executable_filename_valgrind = f"/tmp/{uuid.uuid4().hex}_valgrind"
 
-        # Create a temporary container with the C image
+        # Create a temporary file to hold the C++ code
         with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
             temp_file.write(code)
             temp_file.close()
 
-            # Docker run command
-            command = (
-                f"sh -c 'g++ {source_filename} -o {executable_filename_asan} "
-                f"-fsanitize=address,undefined -static-libasan || exit 1; "
-                f"{executable_filename_asan} {' '.join(params)} || exit 2; "
-                f"g++ {source_filename} -o {executable_filename_valgrind} || exit 3; "
-                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)} || exit 4;'"
+        # Create and start the container with a shell (this allows executing multiple commands)
+        container = client.containers.run(
+            image="tomassoares/jetbrains-cleaner-tool", 
+            command="sleep infinity",  # Start the container with a long-running process
+            volumes={temp_file.name: {'bind': source_filename, 'mode': 'ro'}},
+            detach=True,
+            tty=True,
+            stdin_open=True
+        )
+
+        try:
+            # Step 1: Compile with AddressSanitizer
+            result = container.exec_run(
+                f"g++ {source_filename} -o {executable_filename_asan} -fsanitize=address,undefined -static-libasan",
+                stderr=True,
+                stdout=True
             )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in AddressSanitizer compilation"}
 
-            try:
-                container = client.containers.run(image="tomassoares/jetbrains-cleaner-tool",
-                                                command=command,
-                                                volumes={temp_file.name: {
-                                                    'bind': f'{source_filename}',
-                                                    'mode': 'ro'
-                                                }},
-                                                detach=True,
-                                                tty=True,
-                                                stdin_open=True)
+            # Step 2: Compile for Valgrind
+            result = container.exec_run(
+                f"gcc {source_filename} -o {executable_filename_valgrind}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Error in Valgrind compilation"}
 
-                # Wait for the code to finish and get the exit status code and logs
-                exit_status = container.wait(timeout=30)["StatusCode"]
-                raw_logs = container.logs().decode("utf-8")
-                logs = clean_logs(raw_logs)
+            # Step 3: Run Valgrind on the compiled code
+            result = container.exec_run(
+                f"valgrind --leak-check=full --track-origins=yes {executable_filename_valgrind} {' '.join(params)}",
+                stderr=True,
+                stdout=True
+            )
+            if result.exit_code != 0:
+                logs = result.output.decode('utf-8')
+                return {"success": False, "output": logs, "error": "Valgrind execution failed"}
 
-            except Exception as docker_e:
-                container.remove(force=True)
-                return {"success" : False, "output" : None, "error" : str(docker_e)}
+            # If all commands succeed, return the logs
+            logs = result.output.decode('utf-8')
+            return {"success": True, "output": logs, "error": None}
 
-            # Cleanup container
-            container.remove(force=True)
+        except Exception as e:
+            return {"success": False, "output": None, "error": str(e)}
 
-            if exit_status == 0:
-                return {"success": True, "output": logs, "error": None}
-            else:
-                return {"success": False, "output": None, "error": logs}
-        
+        finally:
+            # Clean up: stop and remove the container
+            container.stop()
+            container.remove()
+
     except Exception as e:
         return {"success": False, "output": None, "error": str(e)}
 
